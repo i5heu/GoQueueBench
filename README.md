@@ -88,11 +88,18 @@ Welcome to **GoQueueBench**, a project dedicated to benchmarking and evaluating 
 
 <br />
 
-| vCPU   | Normal Concurrency Benchmark                                             | High Concurrency Benchmark                                       |
-|--------|--------------------------------------------------------------------------|------------------------------------------------------------------|
-| 2vCPU  | ![Benchmark Results - Normal](.benches/2vCPU/small/benchmark_graph.png)  | ![Benchmark Results - High](.benches/2vCPU/benchmark_graph.png)  |
-| 16vCPU | ![Benchmark Results - Normal](.benches/16vCPU/small/benchmark_graph.png) | ![Benchmark Results - High](.benches/16vCPU/benchmark_graph.png) |
-| 32vCPU | ![Benchmark Results - Normal](.benches/32vCPU/small/benchmark_graph.png) | ![Benchmark Results - High](.benches/32vCPU/benchmark_graph.png) |
+| Cores | Log Scale | Linear scale |
+|-------|-----------|--------------|
+| 1 Cores | ![Log Scale](.benches/benchmark_graph_1.png) | ![Linear scale](.benches/benchmark_graph_1_linear.png) |
+| 2 Cores | ![Log Scale](.benches/benchmark_graph_2.png) | ![Linear scale](.benches/benchmark_graph_2_linear.png) |
+| 3 Cores | ![Log Scale](.benches/benchmark_graph_3.png) | ![Linear scale](.benches/benchmark_graph_3_linear.png) |
+| 4 Cores | ![Log Scale](.benches/benchmark_graph_4.png) | ![Linear scale](.benches/benchmark_graph_4_linear.png) |
+| 6 Cores | ![Log Scale](.benches/benchmark_graph_6.png) | ![Linear scale](.benches/benchmark_graph_6_linear.png) |
+| 8 Cores | ![Log Scale](.benches/benchmark_graph_8.png) | ![Linear scale](.benches/benchmark_graph_8_linear.png) |
+| 12 Cores | ![Log Scale](.benches/benchmark_graph_12.png) | ![Linear scale](.benches/benchmark_graph_12_linear.png) |
+| 16 Cores | ![Log Scale](.benches/benchmark_graph_16.png) | ![Linear scale](.benches/benchmark_graph_16_linear.png) |
+| 32 Cores | ![Log Scale](.benches/benchmark_graph_32.png) | ![Linear scale](.benches/benchmark_graph_32_linear.png) |
+| 48 Cores | ![Log Scale](.benches/benchmark_graph_48.png) | ![Linear scale](.benches/benchmark_graph_48_linear.png) |
 
 
 ## Requirements & Design Philosophy

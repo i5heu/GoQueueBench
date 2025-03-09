@@ -76,6 +76,16 @@ type categoryTicks struct {
 	labels    []string
 }
 
+func (ct categoryTicks) Ticks(min, max float64) []plot.Tick {
+	var ticks []plot.Tick
+	for i, pos := range ct.positions {
+		if pos >= min && pos <= max {
+			ticks = append(ticks, plot.Tick{Value: pos, Label: ct.labels[i]})
+		}
+	}
+	return ticks
+}
+
 // LinearThenLogScale splits the axis at s.Break.
 // Below Break is linear, above Break is log.
 type LinearThenLogScale struct {
@@ -86,9 +96,8 @@ type LinearThenLogScale struct {
 // We devote the bottom half of the axis (0..0.5) to linear space [min..Break],
 // and the top half (0.5..1.0) to log space [Break..max].
 func (s LinearThenLogScale) Normalize(domainMin, domainMax, v float64) float64 {
-	// Ensure domainMin <= Break < domainMax so log portion is valid.
 	if domainMin < 0 {
-		domainMin = 0 // or clamp as needed
+		domainMin = 0
 	}
 	if domainMax <= s.Break {
 		domainMax = s.Break + 1
@@ -100,19 +109,16 @@ func (s LinearThenLogScale) Normalize(domainMin, domainMax, v float64) float64 {
 	logMin := math.Log10(s.Break)
 	logMax := math.Log10(domainMax)
 
-	// Bottom (linear) portion
 	if v <= s.Break {
-		frac := (v - linMin) / (linMax - linMin) // 0..1
+		frac := (v - linMin) / (linMax - linMin)
 		return 0.5 * frac
 	}
-	// Top (log) portion
 	logV := math.Log10(v)
-	frac := (logV - logMin) / (logMax - logMin) // 0..1
+	frac := (logV - logMin) / (logMax - logMin)
 	return 0.5 + 0.5*frac
 }
 
 // Inverse maps normalized [0..1] back to the data domain [min..max].
-// This is needed if you want interactive features like coordinate readouts, zoom, etc.
 func (s LinearThenLogScale) Inverse(domainMin, domainMax float64) func(float64) float64 {
 	if domainMin < 0 {
 		domainMin = 0
@@ -128,49 +134,29 @@ func (s LinearThenLogScale) Inverse(domainMin, domainMax float64) func(float64) 
 	logMax := math.Log10(domainMax)
 
 	return func(norm float64) float64 {
-		// Bottom half => linear
 		if norm <= 0.5 {
 			frac := norm / 0.5
 			return linMin + frac*(linMax-linMin)
 		}
-		// Top half => log
 		frac := (norm - 0.5) / 0.5
 		logVal := logMin + frac*(logMax-logMin)
 		return math.Pow(10, logVal)
 	}
-}
-func (ct categoryTicks) Ticks(min, max float64) []plot.Tick {
-	var ticks []plot.Tick
-	for i, pos := range ct.positions {
-		if pos >= min && pos <= max {
-			ticks = append(ticks, plot.Tick{Value: pos, Label: ct.labels[i]})
-		}
-	}
-	return ticks
-}
-
-// customDenseLogTicks is a custom log tick generator that shows extra minor ticks.
-type customDenseLogTicks struct {
-	Minor int // how many minor ticks per decade
-}
-
-func (t customDenseLogTicks) Ticks(min, max float64) []plot.Tick {
-	// Use the standard log tick generator without the unsupported Minor field.
-	lt := plot.LogTicks{}
-	ticks := lt.Ticks(min, max)
-	// Format each major/minor tick label as e.g. "10ns", "100ns", etc.
-	for i := range ticks {
-		if ticks[i].Label != "" {
-			ticks[i].Label = formatNs(ticks[i].Value)
-		}
-	}
-	return ticks
 }
 
 func main() {
 	jsonFile := flag.String("jsonfile", "test-results.json", "Path to JSON file containing test sessions")
 	outputPrefix := flag.String("out", "benchmark_graph", "Output graph image filename prefix")
 	flag.Parse()
+
+	// Create the output directory ".benches" if it doesn't exist.
+	err := os.MkdirAll(".benches", 0755)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating .benches directory: %v\n", err)
+		os.Exit(1)
+	}
+	// Force saving images in .benches.
+	*outputPrefix = ".benches/benchmark_graph"
 
 	data, err := os.ReadFile(*jsonFile)
 	if err != nil {
@@ -213,13 +199,18 @@ func main() {
 		}
 	}
 
-	// For each CPU group, produce a plot.
-	for cpus, implMap := range pointsByCPU {
-		p := plot.New()
-		p.Title.Text = fmt.Sprintf("Benchmark (5%%-avg-min / Median / 5%%-avg-max) vs. Concurrency for %d CPU(s)", cpus)
-		p.X.Label.Text = "NumProducers + NumConsumers"
-		p.Y.Label.Text = "Time per Msg (ns) [log scale]"
-		// Compute maximum ns/msg from the data for this CPU group.
+	// Prepare sorted CPU groups.
+	var cpuGroups []int
+	for cpus := range pointsByCPU {
+		cpuGroups = append(cpuGroups, cpus)
+	}
+	sort.Ints(cpuGroups)
+
+	// Loop over each CPU group, generating both log and linear plots.
+	for _, cpus := range cpuGroups {
+		implMap := pointsByCPU[cpus]
+
+		// Compute maximum ns/msg from the data.
 		maxData := 0.0
 		for _, implData := range implMap {
 			for _, vals := range implData {
@@ -230,63 +221,9 @@ func main() {
 				}
 			}
 		}
+		yMax := maxData * 1.1
 
-		// Optionally add a margin (e.g. 10% above maxData)
-		p.Y.Min = 0
-		p.Y.Max = maxData * 1.1
-		p.Y.Scale = LinearThenLogScale{Break: 100} // up to 200=linear, above=log
-
-		// Dark theme.
-		p.BackgroundColor = color.RGBA{R: 30, G: 30, B: 30, A: 255}
-		white := color.RGBA{R: 255, G: 255, B: 255, A: 255}
-		p.Title.TextStyle.Color = white
-		p.X.Label.TextStyle.Color = white
-		p.Y.Label.TextStyle.Color = white
-		p.X.Color = white
-		p.Y.Color = white
-		p.X.Tick.Label.Color = white
-		p.Y.Tick.Label.Color = white
-		p.Legend.Top = true
-		p.Legend.Left = true
-		p.Legend.TextStyle.Color = white
-
-		p.Y.Tick.Marker = plot.TickerFunc(func(min, max float64) []plot.Tick {
-			// Approximate final plot height in pixels/points:
-			const pxHeight = 648.0
-			// Desired spacing in px between ticks:
-			const pxSpacing = 25.0
-
-			// Number of ticks:
-			nTicks := pxHeight / pxSpacing
-
-			// This closure maps normalized [0..1] → data domain [min..max],
-			// respecting your custom (split) scale:
-			linLog, ok := p.Y.Scale.(LinearThenLogScale)
-			if !ok {
-				fmt.Fprintf(os.Stderr, "Error: p.Y.Scale is not of type LinearThenLogScale\n")
-				return nil
-			}
-			scaleInv := linLog.Inverse(min, max)
-
-			var ticks []plot.Tick
-			for i := 0.0; i <= nTicks; i++ {
-				frac := i / nTicks // in [0..1]
-				dataVal := scaleInv(frac)
-				if dataVal < 0 {
-					// If times can’t be negative, skip
-					continue
-				}
-				ticks = append(ticks, plot.Tick{
-					Value: dataVal,
-					Label: formatNs(dataVal), // or however you format
-				})
-			}
-			return ticks
-		})
-
-		p.Add(plotter.NewGrid())
-
-		// Build union of concurrency values for this CPU group.
+		// Build union of concurrency values.
 		concurrencySet := make(map[float64]struct{})
 		for _, implData := range implMap {
 			for conc := range implData {
@@ -299,7 +236,7 @@ func main() {
 		}
 		sort.Float64s(concValues)
 
-		// Compute the break value: 10ns above the max ns/msg of the first concurrency level.
+		// Compute break value: 2 ns above the maximum ns/msg for the smallest concurrency level.
 		var breakValue float64
 		if len(concValues) > 0 {
 			firstConc := concValues[0]
@@ -313,15 +250,12 @@ func main() {
 					}
 				}
 			}
-			breakValue = maxForFirstConc + 2 // 2 ns above the max value for the first concurrency level.
+			breakValue = maxForFirstConc + 2
 		} else {
-			breakValue = 100 // fallback if no concurrency values exist
+			breakValue = 100
 		}
 
-		// Set the custom scale using the computed break value.
-		p.Y.Scale = LinearThenLogScale{Break: breakValue}
-
-		// Map concurrency => category index.
+		// Map concurrency values to category positions.
 		concMapping := make(map[float64]float64)
 		var positions []float64
 		var labels []string
@@ -330,9 +264,8 @@ func main() {
 			positions = append(positions, float64(i))
 			labels = append(labels, strconv.FormatFloat(val, 'f', -1, 64))
 		}
-		p.X.Tick.Marker = categoryTicks{positions: positions, labels: labels}
 
-		// Sort implementations alphabetically for consistent legend ordering.
+		// Sort implementations alphabetically.
 		var implNames []string
 		for implName := range implMap {
 			implNames = append(implNames, implName)
@@ -348,11 +281,61 @@ func main() {
 			draw.PlusGlyph{},
 		}
 
-		// Slight offset so each implementation is visually separated.
+		// Offset for visual separation.
 		offsetRange := 0.4
 		offsetStep := offsetRange / float64(len(implNames))
 		startOffset := -offsetRange/2 + offsetStep/2
 
+		// ===== Generate Log Scale Plot =====
+		pLog := plot.New()
+		pLog.Title.Text = fmt.Sprintf("Benchmark (5%%-avg-min / Median / 5%%-avg-max) vs. Concurrency for %d CPU(s) [Log Scale]", cpus)
+		pLog.X.Label.Text = "NumProducers + NumConsumers"
+		pLog.Y.Label.Text = "Time per Msg (ns) [log scale]"
+		pLog.Y.Min = 0
+		pLog.Y.Max = yMax
+		pLog.Y.Scale = LinearThenLogScale{Break: breakValue}
+
+		// Dark theme.
+		pLog.BackgroundColor = color.RGBA{30, 30, 30, 255}
+		white := color.RGBA{255, 255, 255, 255}
+		pLog.Title.TextStyle.Color = white
+		pLog.X.Label.TextStyle.Color = white
+		pLog.Y.Label.TextStyle.Color = white
+		pLog.X.Color = white
+		pLog.Y.Color = white
+		pLog.X.Tick.Label.Color = white
+		pLog.Y.Tick.Label.Color = white
+		pLog.Legend.Top = true
+		pLog.Legend.Left = true
+		pLog.Legend.TextStyle.Color = white
+
+		// Custom tick marker for log scale.
+		pLog.Y.Tick.Marker = plot.TickerFunc(func(min, max float64) []plot.Tick {
+			const pxHeight = 648.0
+			const pxSpacing = 25.0
+			nTicks := pxHeight / pxSpacing
+
+			linLog, ok := pLog.Y.Scale.(LinearThenLogScale)
+			if !ok {
+				fmt.Fprintf(os.Stderr, "Error: pLog.Y.Scale is not of type LinearThenLogScale\n")
+				return nil
+			}
+			scaleInv := linLog.Inverse(min, max)
+			var ticks []plot.Tick
+			for i := 0.0; i <= nTicks; i++ {
+				frac := i / nTicks
+				dataVal := scaleInv(frac)
+				if dataVal < 0 {
+					continue
+				}
+				ticks = append(ticks, plot.Tick{Value: dataVal, Label: formatNs(dataVal)})
+			}
+			return ticks
+		})
+
+		pLog.Add(plotter.NewGrid())
+
+		// Add series for each implementation.
 		for i, impl := range implNames {
 			stats := buildStats(implMap[impl])
 			if len(stats) == 0 {
@@ -362,44 +345,139 @@ func main() {
 				baseX := concMapping[stats[j].orig]
 				stats[j].concurrency = baseX + startOffset + float64(i)*offsetStep
 			}
-			sort.Slice(stats, func(a, b int) bool {
-				return stats[a].concurrency < stats[b].concurrency
-			})
+			sort.Slice(stats, func(a, b int) bool { return stats[a].concurrency < stats[b].concurrency })
 			sp := statsPoints(stats)
-
 			line, err := plotter.NewLine(sp)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error creating line: %v\n", err)
 				continue
 			}
 			line.Color = colors[i%len(colors)]
-
 			points, err := plotter.NewScatter(sp)
-			points.GlyphStyle.Radius = vg.Points(5)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error creating scatter: %v\n", err)
 				continue
 			}
+			points.GlyphStyle.Radius = vg.Points(5)
 			points.Color = colors[i%len(colors)]
 			points.Shape = shapes[i%len(shapes)]
-
 			yErrBars, err := plotter.NewYErrorBars(sp)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error creating error bars: %v\n", err)
 				continue
 			}
 			yErrBars.Color = colors[i%len(colors)]
-
-			p.Add(line, points, yErrBars)
-			p.Legend.Add(impl, line, points)
+			pLog.Add(line, points, yErrBars)
+			pLog.Legend.Add(impl, line, points)
+		}
+		pLog.X.Tick.Marker = categoryTicks{positions: positions, labels: labels}
+		filenameLog := fmt.Sprintf("%s_%d.png", *outputPrefix, cpus)
+		if err := pLog.Save(12*vg.Inch, 9*vg.Inch, filenameLog); err != nil {
+			fmt.Fprintf(os.Stderr, "Error saving log plot for %d CPU(s): %v\n", cpus, err)
+		} else {
+			fmt.Printf("Log plot for %d CPU(s) saved to %s\n", cpus, filenameLog)
 		}
 
-		filename := fmt.Sprintf("%s_%d.png", *outputPrefix, cpus)
-		if err := p.Save(12*vg.Inch, 9*vg.Inch, filename); err != nil {
-			fmt.Fprintf(os.Stderr, "Error saving plot for %d CPU(s): %v\n", cpus, err)
-			continue
+		// ===== Generate Linear Scale Plot =====
+		pLin := plot.New()
+		pLin.Title.Text = fmt.Sprintf("Benchmark (5%%-avg-min / Median / 5%%-avg-max) vs. Concurrency for %d CPU(s) [Linear Scale]", cpus)
+		pLin.X.Label.Text = "NumProducers + NumConsumers"
+		pLin.Y.Label.Text = "Time per Msg (ns) [linear scale]"
+		pLin.Y.Min = 0
+		pLin.Y.Max = yMax
+		// For linear scale, we use the default scale.
+
+		pLin.BackgroundColor = color.RGBA{30, 30, 30, 255}
+		pLin.Title.TextStyle.Color = white
+		pLin.X.Label.TextStyle.Color = white
+		pLin.Y.Label.TextStyle.Color = white
+		pLin.X.Color = white
+		pLin.Y.Color = white
+		pLin.X.Tick.Label.Color = white
+		pLin.Y.Tick.Label.Color = white
+		pLin.Legend.Top = true
+		pLin.Legend.Left = true
+		pLin.Legend.TextStyle.Color = white
+		// For the linear plot, we create a custom TickerFunc so that
+		// each tick is labeled in "ns" (or µs, ms, etc.) and we get
+		// more frequent horizontal lines.
+		pLin.Y.Tick.Marker = plot.TickerFunc(func(min, max float64) []plot.Tick {
+			// We can aim for about 12–15 ticks.
+			const nTicks = 15.0
+			if max <= min {
+				return nil
+			}
+			step := (max - min) / (nTicks - 1)
+
+			var ticks []plot.Tick
+			for i := 0; i < int(nTicks); i++ {
+				val := min + float64(i)*step
+				// If negative times don’t make sense, skip them:
+				if val < 0 {
+					continue
+				}
+				ticks = append(ticks, plot.Tick{
+					Value: val,
+					Label: formatNs(val), // e.g. "12ns", "100µs", etc.
+				})
+			}
+			return ticks
+		})
+
+		// For linear scale, default tick marker is sufficient.
+		pLin.Add(plotter.NewGrid())
+
+		// Add series for each implementation (same as above).
+		for i, impl := range implNames {
+			stats := buildStats(implMap[impl])
+			if len(stats) == 0 {
+				continue
+			}
+			for j := range stats {
+				baseX := concMapping[stats[j].orig]
+				stats[j].concurrency = baseX + startOffset + float64(i)*offsetStep
+			}
+			sort.Slice(stats, func(a, b int) bool { return stats[a].concurrency < stats[b].concurrency })
+			sp := statsPoints(stats)
+			line, err := plotter.NewLine(sp)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error creating line: %v\n", err)
+				continue
+			}
+			line.Color = colors[i%len(colors)]
+			points, err := plotter.NewScatter(sp)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error creating scatter: %v\n", err)
+				continue
+			}
+			points.GlyphStyle.Radius = vg.Points(5)
+			points.Color = colors[i%len(colors)]
+			points.Shape = shapes[i%len(shapes)]
+			yErrBars, err := plotter.NewYErrorBars(sp)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error creating error bars: %v\n", err)
+				continue
+			}
+			yErrBars.Color = colors[i%len(colors)]
+			pLin.Add(line, points, yErrBars)
+			pLin.Legend.Add(impl, line, points)
 		}
-		fmt.Printf("Graph for %d CPU(s) saved to %s\n", cpus, filename)
+		pLin.X.Tick.Marker = categoryTicks{positions: positions, labels: labels}
+		filenameLin := fmt.Sprintf("%s_%d_linear.png", *outputPrefix, cpus)
+		if err := pLin.Save(12*vg.Inch, 9*vg.Inch, filenameLin); err != nil {
+			fmt.Fprintf(os.Stderr, "Error saving linear plot for %d CPU(s): %v\n", cpus, err)
+		} else {
+			fmt.Printf("Linear plot for %d CPU(s) saved to %s\n", cpus, filenameLin)
+		}
+	}
+
+	// ===== Output Markdown Table =====
+	fmt.Println("\nMarkdown Table:\n")
+	fmt.Println("| Cores | Log Scale | Linear scale |")
+	fmt.Println("|-------|-----------|--------------|")
+	for _, cpus := range cpuGroups {
+		row := fmt.Sprintf("| %d Cores | ![Log Scale](.benches/benchmark_graph_%d.png) | ![Linear scale](.benches/benchmark_graph_%d_linear.png) |", cpus, cpus, cpus)
+		fmt.Println(row)
 	}
 }
 
@@ -427,7 +505,6 @@ func buildStats(concurrencyMap map[float64][]float64) []concurrencyStats {
 }
 
 // averageOfRange returns the average of sortedVals in [startFrac, endFrac] of its length.
-// E.g. averageOfRange(vals, 0, 0.05) is the average of the bottom 5%.
 func averageOfRange(sortedVals []float64, startFrac, endFrac float64) float64 {
 	n := len(sortedVals)
 	if n == 0 {
@@ -442,7 +519,6 @@ func averageOfRange(sortedVals []float64, startFrac, endFrac float64) float64 {
 		endIndex = n
 	}
 	if startIndex >= endIndex {
-		// fallback to median if 5% slice is too small
 		return median(sortedVals)
 	}
 	sum := 0.0
