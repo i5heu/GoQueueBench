@@ -251,32 +251,36 @@ func main() {
 		p.Legend.TextStyle.Color = white
 
 		p.Y.Tick.Marker = plot.TickerFunc(func(min, max float64) []plot.Tick {
-			var ticks []plot.Tick
+			// Approximate final plot height in pixels/points:
+			const pxHeight = 648.0
+			// Desired spacing in px between ticks:
+			const pxSpacing = 25.0
 
-			// Linear ticks from [0..500] in steps of 100:
-			for v := 0.0; v <= 500; v += 50 {
+			// Number of ticks:
+			nTicks := pxHeight / pxSpacing
+
+			// This closure maps normalized [0..1] → data domain [min..max],
+			// respecting your custom (split) scale:
+			linLog, ok := p.Y.Scale.(LinearThenLogScale)
+			if !ok {
+				fmt.Fprintf(os.Stderr, "Error: p.Y.Scale is not of type LinearThenLogScale\n")
+				return nil
+			}
+			scaleInv := linLog.Inverse(min, max)
+
+			var ticks []plot.Tick
+			for i := 0.0; i <= nTicks; i++ {
+				frac := i / nTicks // in [0..1]
+				dataVal := scaleInv(frac)
+				if dataVal < 0 {
+					// If times can’t be negative, skip
+					continue
+				}
 				ticks = append(ticks, plot.Tick{
-					Value: v,
-					Label: fmt.Sprintf("%.0fns", v),
+					Value: dataVal,
+					Label: formatNs(dataVal), // or however you format
 				})
 			}
-
-			// Log ticks from [500..max]:
-			logMin := math.Log10(500)
-			logMax := math.Log10(max)
-			nLogTicks := 5
-			for i := 0; i <= nLogTicks; i++ {
-				frac := float64(i) / float64(nLogTicks)
-				lv := logMin + frac*(logMax-logMin)
-				val := math.Pow(10, lv)
-				if val >= 500 {
-					ticks = append(ticks, plot.Tick{
-						Value: val,
-						Label: formatNs(val),
-					})
-				}
-			}
-
 			return ticks
 		})
 
