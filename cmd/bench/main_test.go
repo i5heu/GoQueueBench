@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/i5heu/GoQueueBench/pkg/queue"
+	"github.com/i5heu/GoQueueBench/internal/queue"
 )
 
 // Pointer is a constraint that ensures T is always a pointer type.
@@ -15,7 +15,7 @@ type Pointer[T any] interface {
 }
 
 // Compile-time enforcement that T must be a pointer.
-func enforcePointer[T any, PT interface{ ~*T }](q queue.MPMCQueue[PT]) {}
+func enforcePointer[T any, PT interface{ ~*T }](q queue.QueueValidationInterface[PT]) {}
 
 // progressWatchdog monitors progress and fails the test if no progress is made for 15 seconds.
 type progressWatchdog struct {

@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/i5heu/GoQueueBench/pkg/queue"
+	"github.com/i5heu/GoQueueBench/internal/queue"
 )
 
 // Config is now only about concurrency: how many producers, how many consumers.
@@ -21,7 +21,7 @@ type Config struct {
 // in that window. Once the context expires, producers stop and consumers
 // drain any remaining messages in the queue.
 // Returns the total messages enqueued, total consumed, and the actual elapsed time.
-func RunTimedTest[T any, Q queue.MPMCQueue[T]](
+func RunTimedTest[T any, Q queue.QueueValidationInterface[T]](
 	q Q,
 	cfg Config,
 	testDuration time.Duration,

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/i5heu/GoQueueBench/internal/testbench"
 	"github.com/i5heu/GoQueueBench/pkg/basicmpmc"
 	"github.com/i5heu/GoQueueBench/pkg/buffered"
 	"github.com/i5heu/GoQueueBench/pkg/fastmpmc"
@@ -18,7 +19,6 @@ import (
 	"github.com/i5heu/GoQueueBench/pkg/multiheadqueue"
 	"github.com/i5heu/GoQueueBench/pkg/optmpmc"
 	"github.com/i5heu/GoQueueBench/pkg/optmpmc_sharded"
-	"github.com/i5heu/GoQueueBench/pkg/testbench"
 	"github.com/i5heu/GoQueueBench/pkg/vortexqueue"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"

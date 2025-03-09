@@ -1,9 +1,9 @@
 package queue
 
-// MPMCQueue is a *type constraint* that ensures any type Q has
+// QueueValidationInterface is a *type constraint* that ensures any type Q has
 // these methods. We never store Q in a runtime interface—
-// we only use MPMCQueue at compile time to ensure matching signatures.
-type MPMCQueue[T any] interface {
+// we only use QueueValidationInterface at compile time to ensure matching signatures.
+type QueueValidationInterface[T any] interface {
 	// Enqueue adds an element to the queue and blocks if the queue is full.
 	Enqueue(T)
 
@@ -24,4 +24,4 @@ type Pointer[T any] interface {
 }
 
 // Compile-time enforcement that T must be a pointer.
-func enforcePointer[T any, PT interface{ ~*T }](q MPMCQueue[PT]) {}
+func enforcePointer[T any, PT interface{ ~*T }](q QueueValidationInterface[PT]) {}
