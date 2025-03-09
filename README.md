@@ -4,52 +4,83 @@ Welcome to **GoQueueBench**, a project dedicated to benchmarking and evaluating 
 
 ## Benchmark Summary
 
-## Overall Summary
-| Implementation           | Overall Score | GeoMean Baseline (Light Load) | GeoMean Worst-case (Heavy Load) | Stability Ratio | Core Consistency | Uncertainty | Total Tests |
-|--------------------------|---------------|-------------------------------|---------------------------------|-----------------|------------------|-------------|-------------|
-| OptimizedMPMCQueue       | **411064.20** | 12912103                      | 2552299                         | 0.20            | 0.36             | 0.42        | 45          |
-| FastMPMCQueue            | 249224.56     | 11903141                      | **2617276**                     | 0.22            | 0.20             | 0.38        | 45          |
-| BasicMPMCQueue           | 180185.96     | 5517519                       | 2247495                         | **0.41**        | 0.13             | **0.36**    | 45          |
-| FastMPMCQueueTicket      | 21814.19      | **20931910**                  | 235224                          | 0.01            | **0.87**         | 1.37        | 45          |
-| Golang Buffered Channel  | 9594.27       | 2022529                       | 77994                           | 0.04            | 0.63             | 1.78        | 45          |
-| VortexQueue              | 295.16        | 7111857                       | 28960                           | 0.00            | 0.16             | 1.96        | 45          |
-| OptimizedMPMCQueueSharded | 152.70        | 8840763                       | 20102                           | 0.00            | 0.16             | 1.74        | 45          |
-| MultiHeadQueue           | 144.88        | 3019190                       | 16814                           | 0.01            | 0.12             | 1.60        | 45          |
-| LightningQueue           | 95.00         | 3982777                       | 12856                           | 0.00            | 0.13             | 1.67        | 45          |
+### Overall Summary
+| Implementation              | Overall Score | Throughput Light Load | Throughput Heavy Load | Throughput Average | Stability Ratio | Homogeneity Factor | Uncertainty | Total Tests |
+|-----------------------------|---------------|-----------------------|-----------------------|--------------------|-----------------|--------------------|-------------|-------------|
+| VortexQueue                 |  **11341466** |               6926449 |           **5502925** |        **8776309** |        **1.15** |               0.87 |    **0.25** |         681 |
+| LightningQueue              |       9631771 |               6638213 |               4627690 |            6036728 |            0.99 |           **0.95** |        0.31 |         681 |
+| FastMPMCQueue               |       9384067 |               6870924 |               4598620 |            6070151 |            0.96 |               0.93 |        0.28 |         681 |
+| OptimizedMPMCQueue          |       9105262 |               6436385 |               4379823 |            5838555 |            0.97 |               0.94 |        0.32 |         681 |
+| OptimizedMPMCQueueSharded   |       8130197 |               6369891 |               3834140 |            6781865 |            0.84 |               0.88 |        0.39 |         681 |
+| MultiHeadQueue              |       7391203 |               4363332 |               3492068 |            5558849 |            1.12 |               0.91 |        0.36 |         681 |
+| BasicMPMCQueue              |       5599252 |               4370889 |               2669612 |            3667715 |            0.89 |               0.93 |        0.30 |         681 |
+| Golang Buffered Channel     |       5312485 |               6667828 |               2760985 |            4312720 |            0.54 |               0.82 |        0.66 |         681 |
+| FastMPMCQueueTicket         |       3229780 |           **7705164** |               1203924 |            5803821 |            0.21 |               0.64 |        1.19 |         681 |
 
-## Local Scores by Cores Group
-| Implementation           | Score 2Cores | Score 8Cores | Score 32Cores |
-|--------------------------|------------|------------|------------|
-| BasicMPMCQueue           | 9127055 | 2729517 | 1752860 |
-| FastMPMCQueue            | **11901231** | 4330046 | 3374289 |
-| FastMPMCQueueTicket      | 3851630 | 1790242 | 1584453 |
-| Golang Buffered Channel  | 172058 | 594066 | 612948 |
-| LightningQueue           | 7723 | 626370 | 2395075 |
-| MultiHeadQueue           | 7489 | 305996 | 4991502 |
-| OptimizedMPMCQueue       | 9645956 | **4673683** | 4196510 |
-| OptimizedMPMCQueueSharded | 15363 | 618628 | **7882916** |
-| VortexQueue              | 13457 | 1235016 | 5624004 |
+### Local Scores by Cores Group
+| Implementation              |   Score 1Cores |   Score 2Cores |   Score 3Cores |   Score 4Cores |   Score 6Cores |   Score 8Cores |  Score 12Cores |  Score 16Cores |  Score 32Cores |  Score 48Cores | 
+|-----------------------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|
+| BasicMPMCQueue              |   **36832513** |        8398182 |        2399508 |        2191181 |        1967802 |        2032710 |        1998851 |        1992542 |        2178819 |        1887196 |
+| FastMPMCQueue               |       35310537 |        9863114 |        5327010 |        4389165 |        4114837 |        3946304 |        3508818 |        3387475 |        3071110 |        2993368 |
+| FastMPMCQueueTicket         |       11348171 |        5395762 |        2093984 |        1940202 |        1793559 |        1577878 |        1491638 |        1446440 |        1077290 |         482603 |
+| Golang Buffered Channel     |       18514885 |        8422286 |    **6351583** |        4728949 |        3078397 |        2752374 |        2034346 |        1873180 |        1630227 |        1251687 |
+| LightningQueue              |       34629642 |        8717179 |        5251695 |        4719115 |    **4187622** |        3876578 |    **3786791** |    **3611894** |        3351588 |        3050340 |
+| MultiHeadQueue              |       24868252 |        5586967 |        2883575 |        2884902 |        2911868 |        2887624 |        2637440 |        2542633 |        2295568 |        2123964 |
+| OptimizedMPMCQueue          |       33953165 |        9319082 |        5680900 |        4018438 |        3202764 |        3517017 |        3290428 |        3297191 |        3536595 |        3136713 |
+| OptimizedMPMCQueueSharded   |       19051829 |        5151927 |        4686775 |        3396479 |        3445271 |        3574244 |        3139983 |        3005694 |    **3647477** |    **3736141** |
+| VortexQueue                 |       34711974 |   **11901848** |        4472960 |    **5157737** |        4019648 |    **3955476** |        3649374 |        3577740 |        3298881 |        3174384 |
 
-
+> I tried to to model the score in a way that penalizes unpredictability regarding core count and concurrency pressure.  
+> Meaning: Queues must perform consistently across both low and high concurrency levels and both low and high core counts, otherwise they will be penalized.  
 
 <details>
 <summary><span style="font-weight:bold;"> 🚀 Click for the score formulas </span></summary>
+> I have put the analyze.py into GPT o3-min-high to have a quick explainer for the scores. It looks right but for the exact formula you should refer to the [analyze.py](./analyze.py) script that is used to calculate the scores. This explainer might be outdated.
 
-$$
-\text{Overall Score} = \sqrt{\text{GeoMean(Baseline Throughput)} \times \text{GeoMean(Worst-case Throughput)}} \times \text{GeoMean(Stability Ratio)} \times \text{Core Consistency}
-$$  
+### **Overall Score:**  
+  The overall score is now computed as a weighted sum of three geometric means (baseline, worst-case, and average throughput) multiplied by a “ratio multiplier” (derived from the stability ratios) and further adjusted by a homogeneity factor (which replaces the old core consistency metric):
 
-$$
-\text{Local Score} = \sqrt{\text{Baseline Throughput (Top 5\% Avg)} \times \text{Worst-case Throughput (Bottom 5\% Avg)}}
-$$
-- **Baseline Throughput (Light Load):** Average throughput of the top 5% tests (lowest total concurrency)
-- **Worst-case Throughput (Heavy Load):** Average throughput of the bottom 5% tests (lowest throughput)
-- **Stability Ratio:** `(Worst-case Throughput) / (Baseline Throughput)`  
-- **Core Consistency:** `(Minimum Baseline Throughput) / (Maximum Baseline Throughput)` across cores groups
-- **Uncertainty:** Maximum relative standard deviation over all tests in each cores group
+  $$
+  \text{Overall Score} = \Bigl[0.5 \times \text{GeoMean(Baseline Throughput)} + 0.5 \times \text{GeoMean(Worst-case Throughput)} + 0.4 \times \text{GeoMean(Average Throughput)}\Bigr] \times \Bigl(0.5 + 1.1 \times \ln\Bigl(1 + (\text{Overall Stability Ratio})^{0.9}\Bigr)\Bigr) \times \text{Homogeneity Factor}
+  $$
 
+  **Where:**
+  - **GeoMean(Baseline Throughput):** The geometric mean of the baseline throughput values (i.e. the average throughput of the top 5% tests with the lowest total concurrency) across all cores groups.
+  - **GeoMean(Worst-case Throughput):** The geometric mean of the worst-case throughput values (i.e. the average throughput of the bottom 5% tests with the lowest throughput) across all cores groups.
+  - **GeoMean(Average Throughput):** The geometric mean of the average throughput (computed over all tests within each cores group).
+  - **Overall Stability Ratio:** For each cores group the ratio is computed as  
+    $$
+    \text{Ratio} = \frac{\text{Worst-case Throughput}}{\text{Baseline Throughput}},
+    $$
+    and then these per-group ratios are combined in a harmonic-like fashion:
+    $$
+    \text{Overall Stability Ratio} = \frac{1.5 \times n}{\sum_{i=1}^{n} \frac{1}{(\text{Ratio})_i}},
+    $$
+    where \( n \) is the number of cores groups.
+  - **Ratio Multiplier:** A logarithmic mapping to dampen the effect of the stability ratio:
+    $$
+    \text{Ratio Multiplier} = 0.5 + 1.1 \times \ln\Bigl(1 + (\text{Overall Stability Ratio})^{0.9}\Bigr)
+    $$
+  - **Homogeneity Factor:** Instead of “Core Consistency”, the new version computes a homogeneity factor that measures the “wiggle” or variability in throughput across different total concurrency levels. It is defined as:
+    $$
+    \text{Homogeneity Factor} = \exp\Bigl(-\alpha \times \sum_{i}\Bigl|\ln\Bigl(\frac{T_{i+1}}{T_i}\Bigr)\Bigr|\Bigr)
+    $$
+    where \( T_i \) are the average throughput values at sequential concurrency levels and \( \alpha = 0.2 \).
+
+### **Local Score (per Cores Group):**  
+  The local score now factors in a local homogeneity metric. For each cores group the local score is calculated as:
+
+  $$
+  \text{Local Score} = \sqrt{\text{Baseline Throughput} \times \text{Worst-case Throughput}} \times \text{Local Homogeneity Factor}
+  $$
+
+  **Where:**
+  - **Baseline Throughput:** The average throughput of the top 5% tests (lowest total concurrency) for that cores group.
+  - **Worst-case Throughput:** The average throughput of the bottom 5% tests (lowest throughput) for that cores group.
+  - **Local Homogeneity Factor:** Computed similarly to the overall homogeneity factor but applied within each cores group individually.
 
 </details>  
+
 <br />
 
 | vCPU   | Normal Concurrency Benchmark                                             | High Concurrency Benchmark                                       |
