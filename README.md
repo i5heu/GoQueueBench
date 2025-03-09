@@ -243,5 +243,5 @@ Overall, I would say they are helpful in such cases, at least if a knowledgeable
 I might write an agent one day that can iterate by itself over a package with test and bench feedback to maybe arrive at such totally new ideas or complex systems, but for now I am happy with the results I got from them.
 
 ## License
-GoQueueBench © 2024 Mia Heidenstedt and contributors   
+GoQueueBench © 2025 Mia Heidenstedt and contributors   
 SPDX-License-Identifier: AGPL-3.0  
