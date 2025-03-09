@@ -47,36 +47,46 @@ Welcome to **GoQueueBench**, a project dedicated to benchmarking and evaluating 
   \text{Overall Score} = \Bigl[0.5 \times \text{GeoMean(Baseline Throughput)} + 0.5 \times \text{GeoMean(Worst-case Throughput)} + 0.4 \times \text{GeoMean(Average Throughput)}\Bigr] \times \Bigl(0.5 + 1.1 \times \ln\Bigl(1 + (\text{Overall Stability Ratio})^{0.9}\Bigr)\Bigr) \times \text{Homogeneity Factor}
   $$
 
-  **Where:**
-  - **GeoMean(Baseline Throughput):** The geometric mean of the baseline throughput values (i.e. the average throughput of the top 5% tests with the lowest total concurrency) across all cores groups.
-  - **GeoMean(Worst-case Throughput):** The geometric mean of the worst-case throughput values (i.e. the average throughput of the bottom 5% tests with the lowest throughput) across all cores groups.
-  - **GeoMean(Average Throughput):** The geometric mean of the average throughput (computed over all tests within each cores group).
-  - **Overall Stability Ratio:** For each cores group the ratio is computed as  
-  
-    $$
-    \text{Ratio} = \frac{\text{Worst-case Throughput}}{\text{Baseline Throughput}},
-    $$
+**Where:**
+#### **GeoMean(Baseline Throughput):** 
+The geometric mean of the baseline throughput values (i.e. the average throughput of the top 5% tests with the lowest total concurrency) across all cores groups.
 
-    and then these per-group ratios are combined in a harmonic-like fashion:
+#### **GeoMean(Worst-case Throughput):** 
+The geometric mean of the worst-case throughput values (i.e. the average throughput of the bottom 5% tests with the lowest throughput) across all cores groups.
 
-    $$
-    \text{Overall Stability Ratio} = \frac{1.5 \times n}{\sum_{i=1}^{n} \frac{1}{(\text{Ratio})_i}},
-    $$
+#### **GeoMean(Average Throughput):** 
+The geometric mean of the average throughput (computed over all tests within each cores group).
 
-    where \( n \) is the number of cores groups.
-  - **Ratio Multiplier:** A logarithmic mapping to dampen the effect of the stability ratio:
+#### **Overall Stability Ratio:** 
+For each cores group the ratio is computed as  
 
-    $$
-    \text{Ratio Multiplier} = 0.5 + 1.1 \times \ln\Bigl(1 + (\text{Overall Stability Ratio})^{0.9}\Bigr)
-    $$
+$$
+\text{Ratio} = \frac{\text{Worst-case Throughput}}{\text{Baseline Throughput}},
+$$
 
-  - **Homogeneity Factor:** Instead of “Core Consistency”, the new version computes a homogeneity factor that measures the “wiggle” or variability in throughput across different total concurrency levels. It is defined as:
+and then these per-group ratios are combined in a harmonic-like fashion:
 
-    $$
-    \text{Homogeneity Factor} = \exp\Bigl(-\alpha \times \sum_{i}\Bigl|\ln\Bigl(\frac{T_{i+1}}{T_i}\Bigr)\Bigr|\Bigr)
-    $$
+$$
+\text{Overall Stability Ratio} = \frac{1.5 \times n}{\sum_{i=1}^{n} \frac{1}{(\text{Ratio})_i}},
+$$
 
-    where \( T_i \) are the average throughput values at sequential concurrency levels and \( \alpha = 0.2 \).
+where \( n \) is the number of cores groups.
+
+#### **Ratio Multiplier:** 
+A logarithmic mapping to dampen the effect of the stability ratio:
+
+$$
+\text{Ratio Multiplier} = 0.5 + 1.1 \times \ln\Bigl(1 + (\text{Overall Stability Ratio})^{0.9}\Bigr)
+$$
+
+#### **Homogeneity Factor:** 
+Instead of “Core Consistency”, the new version computes a homogeneity factor that measures the “wiggle” or variability in throughput across different total concurrency levels. It is defined as:
+
+$$
+\text{Homogeneity Factor} = \exp\Bigl(-\alpha \times \sum_{i}\Bigl|\ln\Bigl(\frac{T_{i+1}}{T_i}\Bigr)\Bigr|\Bigr)
+$$
+
+where \( T_i \) are the average throughput values at sequential concurrency levels and \( \alpha = 0.2 \).
 
 ### **Local Score (per Cores Group):**  
   The local score now factors in a local homogeneity metric. For each cores group the local score is calculated as:
