@@ -131,10 +131,10 @@ The queues are available as individual Go packages. Each package provides its ow
 ```go
 package queue
 
-// MPMCQueue is a *type constraint* that ensures any type Q has
+// QueueValidationInterface is a *type constraint* that ensures any type Q has
 // these methods. We never store Q in a runtime interface—
-// we only use MPMCQueue at compile time to ensure matching signatures.
-type MPMCQueue[T any] interface {
+// we only use QueueValidationInterface at compile time to ensure matching signatures.
+type QueueValidationInterface[T any] interface {
 	// Enqueue adds an element to the queue and blocks if the queue is full.
 	Enqueue(T)
 
@@ -155,9 +155,9 @@ type Pointer[T any] interface {
 }
 
 // Compile-time enforcement that T must be a pointer.
-func enforcePointer[T any, PT interface{ ~*T }](q MPMCQueue[PT]) {}
-```
+func enforcePointer[T any, PT interface{ ~*T }](q QueueValidationInterface[PT]) {}
 
+```
 
 
 ## Production-Ready Requirements for Queue Features
@@ -218,8 +218,12 @@ Any new queue can be plugged in by adding an entry to `getImplementations()` in 
 
 ## Why are there LLMs listed as authors
 The * does not give the LLM or the company that developed, trained or hosts them any authorship rights, there are there purely for reference.  
-I experimented with a few LLMs to see if how one could use them to quickly generate iterate on such a very narrow, very well testable problem space like queue implementations.  
-I found that they like to cheat if one does not clearly state that this is not allowed by bypassing the test with code that targets parameters tests set.  
+I experimented with a few LLMs to see if and how one could use them to quickly iterate on such very narrow and very well testable problem space like queue implementations.  
+I found that LLMs like to cheat if one does not clearly state that this is not allowed by bypassing the test with code that targets parameters tests set.  
 Also they like to use already existing methods in the repo which kinda defeats the purpose of a new implementation.  
 Overall, I would say they are helpful in such cases, at least if a knowledgeable human is overseeing the process and gives hints into the right direction, otherwise they tend to give up to early.  
 I might write an agent one day that can iterate by itself over a package with test and bench feedback to maybe arrive at such totally new ideas or complex systems, but for now I am happy with the results I got from them.
+
+## License
+GoQueueBench © 2024 Mia Heidenstedt and contributors   
+SPDX-License-Identifier: AGPL-3.0  
