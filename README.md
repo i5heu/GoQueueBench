@@ -86,7 +86,7 @@ $$
 \text{Homogeneity Factor} = \exp\Bigl(-\alpha \times \sum_{i}\Bigl|\ln\Bigl(\frac{T_{i+1}}{T_i}\Bigr)\Bigr|\Bigr)
 $$
 
-where \( T_i \) are the average throughput values at sequential concurrency levels and \( \alpha = 0.2 \).
+where `T_i` are the average throughput values at sequential concurrency levels and `alpha = 0.2`.
 
 ### **Local Score (per Cores Group):**  
   The local score now factors in a local homogeneity metric. For each cores group the local score is calculated as:
