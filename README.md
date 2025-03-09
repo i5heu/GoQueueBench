@@ -4,6 +4,9 @@ Welcome to **GoQueueBench**, a project dedicated to benchmarking and evaluating 
 
 ## Benchmark Summary
 
+> I tried to to model the `Overall Score` in a way that penalizes unpredictability regarding core count and concurrency pressure.  
+> Meaning: Queues must perform consistently across both low and high concurrency levels and both low and high core counts, otherwise they will be penalized in the `Overall Score`.  
+
 ### Overall Summary
 | Implementation              | Overall Score | Throughput Light Load | Throughput Heavy Load | Throughput Average | Stability Ratio | Homogeneity Factor | Uncertainty | Total Tests |
 |-----------------------------|---------------|-----------------------|-----------------------|--------------------|-----------------|--------------------|-------------|-------------|
@@ -30,11 +33,11 @@ Welcome to **GoQueueBench**, a project dedicated to benchmarking and evaluating 
 | OptimizedMPMCQueueSharded   |       19051829 |        5151927 |        4686775 |        3396479 |        3445271 |        3574244 |        3139983 |        3005694 |    **3647477** |    **3736141** |
 | VortexQueue                 |       34711974 |   **11901848** |        4472960 |    **5157737** |        4019648 |    **3955476** |        3649374 |        3577740 |        3298881 |        3174384 |
 
-> I tried to to model the score in a way that penalizes unpredictability regarding core count and concurrency pressure.  
-> Meaning: Queues must perform consistently across both low and high concurrency levels and both low and high core counts, otherwise they will be penalized.  
-
 <details>
 <summary><span style="font-weight:bold;"> 🚀 Click for the score formulas </span></summary>
+
+-----
+
 > I have put the analyze.py into GPT o3-min-high to have a quick explainer for the scores. It looks right but for the exact formula you should refer to the [analyze.py](./analyze.py) script that is used to calculate the scores. This explainer might be outdated.
 
 ### **Overall Score:**  
@@ -79,6 +82,8 @@ Welcome to **GoQueueBench**, a project dedicated to benchmarking and evaluating 
   - **Worst-case Throughput:** The average throughput of the bottom 5% tests (lowest throughput) for that cores group.
   - **Local Homogeneity Factor:** Computed similarly to the overall homogeneity factor but applied within each cores group individually.
 
+-----
+
 </details>  
 
 <br />
@@ -88,119 +93,6 @@ Welcome to **GoQueueBench**, a project dedicated to benchmarking and evaluating 
 | 2vCPU  | ![Benchmark Results - Normal](.benches/2vCPU/small/benchmark_graph.png)  | ![Benchmark Results - High](.benches/2vCPU/benchmark_graph.png)  |
 | 16vCPU | ![Benchmark Results - Normal](.benches/16vCPU/small/benchmark_graph.png) | ![Benchmark Results - High](.benches/16vCPU/benchmark_graph.png) |
 | 32vCPU | ![Benchmark Results - Normal](.benches/32vCPU/small/benchmark_graph.png) | ![Benchmark Results - High](.benches/32vCPU/benchmark_graph.png) |
-
-<details>
-<summary><span style="font-weight:bold;"> 🚀 Benchmark Results (click to expand)</span></summary>
-
-### 2vCPU  (sorted by Avg Time per Msg in ns)
-
-#### High Concurrency
-
-| Implementation            | Package         | Features                                       | Author                                                                                                    | Avg Time per Msg (ns) |
-|---------------------------|-----------------|------------------------------------------------|-----------------------------------------------------------------------------------------------------------|-----------------------|
-| FastMPMCQueue             | fastmpmc        | MPMC, FIFO, Cache-Optimized                    | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 212                   |
-| BasicMPMCQueue            | basicmpmc       | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 213                   |
-| OptimizedMPMCQueue        | optmpmc         | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors)           | 252                   |
-| FastMPMCQueueTicket       | fastmpmc_ticket | MPMC, FIFO, Cache-Optimized, Ticket-Based      | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 1449                  |
-| Golang Buffered Channel   | buffered        | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org)                                                                | 13354                 |
-| VortexQueue               | vortexqueue     | MPMC, FIFO, Cache-Optimized, Spin-Wait         | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 12708919              |
-| OptimizedMPMCQueueSharded | optmpmc_sharded | MPMC, Sharded, Multi-Head-FIFO                 | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors)           | 15826009              |
-| LightningQueue            | lightningqueue  | MPMC, FIFO, Cache-Optimized, Ultra-Low-Latency | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 19191807              |
-
-#### Normal Concurrency
-
-| Implementation            | Package         | Features                                       | Author                                                                                                    | Avg Time per Msg (ns) |
-|---------------------------|-----------------|------------------------------------------------|-----------------------------------------------------------------------------------------------------------|-----------------------|
-| OptimizedMPMCQueue        | optmpmc         | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors)           | 42                    |
-| FastMPMCQueue             | fastmpmc        | MPMC, FIFO, Cache-Optimized                    | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 46                    |
-| BasicMPMCQueue            | basicmpmc       | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org)                                                                | 50                    |
-| FastMPMCQueueTicket       | fastmpmc_ticket | MPMC, FIFO, Cache-Optimized, Ticket-Based      | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 214                   |
-| Golang Buffered Channel   | buffered        | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org)                                                                | 40803                 |
-| OptimizedMPMCQueueSharded | optmpmc_sharded | MPMC, Sharded, Multi-Head-FIFO                 | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors)           | 200553                |
-| MultiHeadQueue            | multiheadqueue  | MPMC, Multi-Head-FIFO, Sharded, Low Latency    | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 307421                |
-| VortexQueue               | vortexqueue     | MPMC, FIFO, Cache-Optimized, Spin-Wait         | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 390582                |
-| LightningQueue            | lightningqueue  | MPMC, FIFO, Cache-Optimized, Ultra-Low-Latency | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 405105                |
-
-```json
-    "system_info": {
-      "num_cpu": 2,
-      "cpu_model": "AMD EPYC Processor",
-      "cpu_speed_mhz": 2399.996,
-      "go_arch": "amd64",
-      "total_memory_bytes": 8128577536
-    },
-```
-
-### 16vCPU (sorted by Avg Time per Msg in ns)
-
-#### High Concurrency
-
-| Implementation            | Package         | Features                                       | Author                                                                                                    | Avg Time per Msg (ns) |
-|---------------------------|-----------------|------------------------------------------------|-----------------------------------------------------------------------------------------------------------|-----------------------|
-| FastMPMCQueue             | fastmpmc        | MPMC, FIFO, Cache-Optimized                    | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 487                   |
-| OptimizedMPMCQueue        | optmpmc         | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors)           | 492                   |
-| BasicMPMCQueue            | basicmpmc       | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 567                   |
-| FastMPMCQueueTicket       | fastmpmc_ticket | MPMC, FIFO, Cache-Optimized, Ticket-Based      | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 6026                  |
-| VortexQueue               | vortexqueue     | MPMC, FIFO, Cache-Optimized, Spin-Wait         | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 7110                  |
-| Golang Buffered Channel   | buffered        | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org)                                                                | 7741                  |
-| OptimizedMPMCQueueSharded | optmpmc_sharded | MPMC, Sharded, Multi-Head-FIFO                 | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors)           | 10606                 |
-| LightningQueue            | lightningqueue  | MPMC, FIFO, Cache-Optimized, Ultra-Low-Latency | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 22431                 |
-| MultiHeadQueue            | multiheadqueue  | MPMC, Multi-Head-FIFO, Sharded, Low Latency    | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 26075                 |
-
-#### Normal Concurrency
-
-| Implementation            | Package         | Features                                       | Author                                                                                                    | Avg Time per Msg (ns) |
-|---------------------------|-----------------|------------------------------------------------|-----------------------------------------------------------------------------------------------------------|-----------------------|
-| OptimizedMPMCQueue        | optmpmc         | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors)           | 117                   |
-| FastMPMCQueue             | fastmpmc        | MPMC, FIFO, Cache-Optimized                    | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 136                   |
-| MultiHeadQueue            | multiheadqueue  | MPMC, Multi-Head-FIFO, Sharded, Low Latency    | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 190                   |
-| BasicMPMCQueue            | basicmpmc       | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 251                   |
-| VortexQueue               | vortexqueue     | MPMC, FIFO, Cache-Optimized, Spin-Wait         | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 356                   |
-| LightningQueue            | lightningqueue  | MPMC, FIFO, Cache-Optimized, Ultra-Low-Latency | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 394                   |
-| FastMPMCQueueTicket       | fastmpmc_ticket | MPMC, FIFO, Cache-Optimized, Ticket-Based      | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 999                   |
-| OptimizedMPMCQueueSharded | optmpmc_sharded | MPMC, Sharded, Multi-Head-FIFO                 | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors)           | 2565                  |
-
-### 32vCPU (sorted by Avg Time per Msg in ns)
-
-#### High Concurrency
-
-| Implementation            | Package         | Features                                       | Author                                                                                                    | Avg Time per Msg (ns) |
-|---------------------------|-----------------|------------------------------------------------|-----------------------------------------------------------------------------------------------------------|-----------------------|
-| OptimizedMPMCQueueSharded | optmpmc_sharded | MPMC, Sharded, Multi-Head-FIFO                 | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors)           | 377                   |
-| MultiHeadQueue            | multiheadqueue  | MPMC, Multi-Head-FIFO, Sharded, Low Latency    | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 396                   |
-| VortexQueue               | vortexqueue     | MPMC, FIFO, Cache-Optimized, Spin-Wait         | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 455                   |
-| OptimizedMPMCQueue        | optmpmc         | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors)           | 483                   |
-| FastMPMCQueue             | fastmpmc        | MPMC, FIFO, Cache-Optimized                    | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 537                   |
-| BasicMPMCQueue            | basicmpmc       | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 727                   |
-| LightningQueue            | lightningqueue  | MPMC, FIFO, Cache-Optimized, Ultra-Low-Latency | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 932                   |
-| Golang Buffered Channel   | buffered        | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org)                                                                | 1894                  |
-| FastMPMCQueueTicket       | fastmpmc_ticket | MPMC, FIFO, Cache-Optimized, Ticket-Based      | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 8794                  |
-
-#### Normal Concurrency
-
-| Implementation            | Package         | Features                                       | Author                                                                                                    | Avg Time per Msg (ns) |
-|---------------------------|-----------------|------------------------------------------------|-----------------------------------------------------------------------------------------------------------|-----------------------|
-| MultiHeadQueue            | multiheadqueue  | MPMC, Multi-Head-FIFO, Sharded, Low Latency    | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 121                   |
-| VortexQueue               | vortexqueue     | MPMC, FIFO, Cache-Optimized, Spin-Wait         | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 125                   |
-| OptimizedMPMCQueue        | optmpmc         | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1*                                                    | 186                   |
-| OptimizedMPMCQueueSharded | optmpmc_sharded | MPMC, Sharded, Multi-Head-FIFO                 | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1*                                                    | 227                   |
-| FastMPMCQueue             | fastmpmc        | MPMC, FIFO, Cache-Optimized                    | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 249                   |
-| LightningQueue            | lightningqueue  | MPMC, FIFO, Cache-Optimized, Ultra-Low-Latency | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 434                   |
-| BasicMPMCQueue            | basicmpmc       | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org) OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)  | 525                   |
-| FastMPMCQueueTicket       | fastmpmc_ticket | MPMC, FIFO, Cache-Optimized, Ticket-Based      | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) | 1325                  |
-| Golang Buffered Channel   | buffered        | MPMC, FIFO                                     | [Mia Heidenstedt](https://heidenstedt.org)                                                                | 3070                  |
-
-```json
-    "system_info": {
-      "num_cpu": 32,
-      "cpu_model": "AMD EPYC Processor",
-      "cpu_speed_mhz": 2399.998,
-      "go_arch": "amd64",
-      "total_memory_bytes": 131893710848
-    },
-```
-
-</details>
 
 
 ## Requirements & Design Philosophy
