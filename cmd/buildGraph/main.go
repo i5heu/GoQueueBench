@@ -76,6 +76,69 @@ type categoryTicks struct {
 	labels    []string
 }
 
+// LinearThenLogScale splits the axis at s.Break.
+// Below Break is linear, above Break is log.
+type LinearThenLogScale struct {
+	Break float64
+}
+
+// Normalize maps data [min..max] to [0..1] on the plot.
+// We devote the bottom half of the axis (0..0.5) to linear space [min..Break],
+// and the top half (0.5..1.0) to log space [Break..max].
+func (s LinearThenLogScale) Normalize(domainMin, domainMax, v float64) float64 {
+	// Ensure domainMin <= Break < domainMax so log portion is valid.
+	if domainMin < 0 {
+		domainMin = 0 // or clamp as needed
+	}
+	if domainMax <= s.Break {
+		domainMax = s.Break + 1
+	}
+
+	linMin := domainMin
+	linMax := s.Break
+
+	logMin := math.Log10(s.Break)
+	logMax := math.Log10(domainMax)
+
+	// Bottom (linear) portion
+	if v <= s.Break {
+		frac := (v - linMin) / (linMax - linMin) // 0..1
+		return 0.5 * frac
+	}
+	// Top (log) portion
+	logV := math.Log10(v)
+	frac := (logV - logMin) / (logMax - logMin) // 0..1
+	return 0.5 + 0.5*frac
+}
+
+// Inverse maps normalized [0..1] back to the data domain [min..max].
+// This is needed if you want interactive features like coordinate readouts, zoom, etc.
+func (s LinearThenLogScale) Inverse(domainMin, domainMax float64) func(float64) float64 {
+	if domainMin < 0 {
+		domainMin = 0
+	}
+	if domainMax <= s.Break {
+		domainMax = s.Break + 1
+	}
+
+	linMin := domainMin
+	linMax := s.Break
+
+	logMin := math.Log10(s.Break)
+	logMax := math.Log10(domainMax)
+
+	return func(norm float64) float64 {
+		// Bottom half => linear
+		if norm <= 0.5 {
+			frac := norm / 0.5
+			return linMin + frac*(linMax-linMin)
+		}
+		// Top half => log
+		frac := (norm - 0.5) / 0.5
+		logVal := logMin + frac*(logMax-logMin)
+		return math.Pow(10, logVal)
+	}
+}
 func (ct categoryTicks) Ticks(min, max float64) []plot.Tick {
 	var ticks []plot.Tick
 	for i, pos := range ct.positions {
@@ -156,7 +219,22 @@ func main() {
 		p.Title.Text = fmt.Sprintf("Benchmark (5%%-avg-min / Median / 5%%-avg-max) vs. Concurrency for %d CPU(s)", cpus)
 		p.X.Label.Text = "NumProducers + NumConsumers"
 		p.Y.Label.Text = "Time per Msg (ns) [log scale]"
-		p.Y.Scale = plot.LinearScale{}
+		// Compute maximum ns/msg from the data for this CPU group.
+		maxData := 0.0
+		for _, implData := range implMap {
+			for _, vals := range implData {
+				for _, v := range vals {
+					if v > maxData {
+						maxData = v
+					}
+				}
+			}
+		}
+
+		// Optionally add a margin (e.g. 10% above maxData)
+		p.Y.Min = 0
+		p.Y.Max = maxData * 1.1
+		p.Y.Scale = LinearThenLogScale{Break: 100} // up to 200=linear, above=log
 
 		// Dark theme.
 		p.BackgroundColor = color.RGBA{R: 30, G: 30, B: 30, A: 255}
@@ -173,30 +251,32 @@ func main() {
 		p.Legend.TextStyle.Color = white
 
 		p.Y.Tick.Marker = plot.TickerFunc(func(min, max float64) []plot.Tick {
-			// 1) Estimate final height (e.g. 9 inches → 648 px).
-			const pxHeight = 648.0
-			const pxSpacing = 30.0
-			// So about 43 ticks from min to max:
-			nTicks := pxHeight / pxSpacing
-
-			// 2) On a log scale, step from log10(min) to log10(max).
-			//    (Be sure min > 0, or clamp it, because log10(0) is invalid.)
-			if min <= 0 {
-				min = 1e-9
-			}
-			start := math.Log10(min)
-			end := math.Log10(max)
-			step := (end - start) / nTicks
-
 			var ticks []plot.Tick
-			for i := 0.0; i <= nTicks; i++ {
-				logVal := start + i*step
-				y := math.Pow(10, logVal)
+
+			// Linear ticks from [0..500] in steps of 100:
+			for v := 0.0; v <= 500; v += 50 {
 				ticks = append(ticks, plot.Tick{
-					Value: y,
-					Label: formatNs(y), // same helper you’re already using
+					Value: v,
+					Label: fmt.Sprintf("%.0fns", v),
 				})
 			}
+
+			// Log ticks from [500..max]:
+			logMin := math.Log10(500)
+			logMax := math.Log10(max)
+			nLogTicks := 5
+			for i := 0; i <= nLogTicks; i++ {
+				frac := float64(i) / float64(nLogTicks)
+				lv := logMin + frac*(logMax-logMin)
+				val := math.Pow(10, lv)
+				if val >= 500 {
+					ticks = append(ticks, plot.Tick{
+						Value: val,
+						Label: formatNs(val),
+					})
+				}
+			}
+
 			return ticks
 		})
 
@@ -214,6 +294,28 @@ func main() {
 			concValues = append(concValues, val)
 		}
 		sort.Float64s(concValues)
+
+		// Compute the break value: 10ns above the max ns/msg of the first concurrency level.
+		var breakValue float64
+		if len(concValues) > 0 {
+			firstConc := concValues[0]
+			maxForFirstConc := 0.0
+			for _, implData := range implMap {
+				if vals, ok := implData[firstConc]; ok {
+					for _, v := range vals {
+						if v > maxForFirstConc {
+							maxForFirstConc = v
+						}
+					}
+				}
+			}
+			breakValue = maxForFirstConc + 2 // 2 ns above the max value for the first concurrency level.
+		} else {
+			breakValue = 100 // fallback if no concurrency values exist
+		}
+
+		// Set the custom scale using the computed break value.
+		p.Y.Scale = LinearThenLogScale{Break: breakValue}
 
 		// Map concurrency => category index.
 		concMapping := make(map[float64]float64)
