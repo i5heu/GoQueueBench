@@ -52,22 +52,30 @@ Welcome to **GoQueueBench**, a project dedicated to benchmarking and evaluating 
   - **GeoMean(Worst-case Throughput):** The geometric mean of the worst-case throughput values (i.e. the average throughput of the bottom 5% tests with the lowest throughput) across all cores groups.
   - **GeoMean(Average Throughput):** The geometric mean of the average throughput (computed over all tests within each cores group).
   - **Overall Stability Ratio:** For each cores group the ratio is computed as  
+  
     $$
     \text{Ratio} = \frac{\text{Worst-case Throughput}}{\text{Baseline Throughput}},
     $$
+
     and then these per-group ratios are combined in a harmonic-like fashion:
+
     $$
     \text{Overall Stability Ratio} = \frac{1.5 \times n}{\sum_{i=1}^{n} \frac{1}{(\text{Ratio})_i}},
     $$
+
     where \( n \) is the number of cores groups.
   - **Ratio Multiplier:** A logarithmic mapping to dampen the effect of the stability ratio:
+
     $$
     \text{Ratio Multiplier} = 0.5 + 1.1 \times \ln\Bigl(1 + (\text{Overall Stability Ratio})^{0.9}\Bigr)
     $$
+
   - **Homogeneity Factor:** Instead of “Core Consistency”, the new version computes a homogeneity factor that measures the “wiggle” or variability in throughput across different total concurrency levels. It is defined as:
+
     $$
     \text{Homogeneity Factor} = \exp\Bigl(-\alpha \times \sum_{i}\Bigl|\ln\Bigl(\frac{T_{i+1}}{T_i}\Bigr)\Bigr|\Bigr)
     $$
+
     where \( T_i \) are the average throughput values at sequential concurrency levels and \( \alpha = 0.2 \).
 
 ### **Local Score (per Cores Group):**  
