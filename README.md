@@ -2,6 +2,20 @@
 
 Welcome to **GoQueueBench**, a project dedicated to benchmarking and evaluating the fastest Golang queue implementations.
 
+## Queue List
+
+| Implementation           | Package         | Features                    | Author                      | Max Throughput (msgs/sec) |
+|--------------------------|-----------------|-----------------------------|-----------------------------|---------------------------|
+| VortexQueue              | vortexqueue     | MPMC, FIFO, Cache-Optimized, Spin-Wait | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) |                   9545617 |
+| FastMPMCQueueTicket      | fastmpmc_ticket | MPMC, FIFO, Cache-Optimized, Ticket-Based | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) |                   8139560 |
+| MultiHeadQueue           | multiheadqueue  | MPMC, Multi-Head-FIFO, Sharded, Low Latency | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) |                   8046964 |
+| OptimizedMPMCQueueSharded | optmpmc_sharded | MPMC, Sharded, Multi-Head-FIFO | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors) |                   7552107 |
+| FastMPMCQueue            | fastmpmc        | MPMC, FIFO, Cache-Optimized | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) |                   4322947 |
+| LightningQueue           | lightningqueue  | MPMC, FIFO, Cache-Optimized, Ultra-Low-Latency | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) |                   4163510 |
+| Golang Buffered Channel  | buffered        | MPMC, FIFO                  | [Mia Heidenstedt](https://heidenstedt.org) |                   3859331 |
+| OptimizedMPMCQueue       | optmpmc         | MPMC, FIFO                  | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o1[*](#why-are-there-llms-listed-as-authors) |                   3852340 |
+| BasicMPMCQueue           | basicmpmc       | MPMC, FIFO                  | [Mia Heidenstedt](https://heidenstedt.org), OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors) |                   2312063 |
+
 ## Benchmark Summary
 
 > I tried to to model the `Overall Score` in a way that penalizes unpredictability regarding core count and concurrency pressure.  

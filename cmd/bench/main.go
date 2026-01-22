@@ -99,15 +99,16 @@ func outputMarkdownTable(jsonFile string) {
 	for _, impl := range getImplementations() {
 		implMetaMap[impl.name] = impl
 	}
-	// Build table rows.
+	// Build table rows: collapse multiple bench entries per implementation
+	// and keep only the maximum throughput per implementation.
 	type tableRow struct {
 		implementation string
 		pkgName        string
 		features       string
 		author         string
-		throughput     float64
+		maxThroughput  float64
 	}
-	var rows []tableRow
+	maxMap := make(map[string]tableRow)
 	for _, bench := range lastSession.Benchmarks {
 		meta, ok := implMetaMap[bench.Implementation]
 		var pkgName, features, authors string
@@ -116,25 +117,39 @@ func outputMarkdownTable(jsonFile string) {
 			features = strings.Join(meta.features, ", ")
 			authors = strings.Join(meta.authors, ", ")
 		}
-		rows = append(rows, tableRow{
-			implementation: bench.Implementation,
-			pkgName:        pkgName,
-			features:       features,
-			author:         authors,
-			throughput:     bench.Throughput,
-		})
+		row, exists := maxMap[bench.Implementation]
+		if !exists {
+			row = tableRow{
+				implementation: bench.Implementation,
+				pkgName:        pkgName,
+				features:       features,
+				author:         authors,
+				maxThroughput:  bench.Throughput,
+			}
+		} else if bench.Throughput > row.maxThroughput {
+			row.maxThroughput = bench.Throughput
+		}
+		maxMap[bench.Implementation] = row
 	}
-	// Sort rows by throughput descending.
+
+	// Convert map to slice for sorting.
+	var rows []tableRow
+	for _, r := range maxMap {
+		rows = append(rows, r)
+	}
+
+	// Sort rows by max throughput descending.
 	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].throughput > rows[j].throughput
+		return rows[i].maxThroughput > rows[j].maxThroughput
 	})
-	fmt.Println("## Last Session Benchmark Summary")
+
+	fmt.Println("## Queue List")
 	fmt.Println()
-	fmt.Println("| Implementation           | Package         | Features                    | Author                      | Throughput (msgs/sec) |")
-	fmt.Println("|--------------------------|-----------------|-----------------------------|-----------------------------|-----------------------|")
+	fmt.Println("| Implementation           | Package         | Features                    | Author                      | Max Throughput (msgs/sec) |")
+	fmt.Println("|--------------------------|-----------------|-----------------------------|-----------------------------|---------------------------|")
 	for _, r := range rows {
-		fmt.Printf("| %-24s | %-15s | %-27s | %-27s | %21.0f |\n",
-			r.implementation, r.pkgName, r.features, r.author, r.throughput)
+		fmt.Printf("| %-24s | %-15s | %-27s | %-27s | %25.0f |\n",
+			r.implementation, r.pkgName, r.features, r.author, r.maxThroughput)
 	}
 }
 
@@ -373,7 +388,7 @@ func getImplementations() []Implementation[*int, interface {
 			name:        "Golang Buffered Channel",
 			pkgName:     "buffered",
 			description: "Works with misused standard go channels, it would be much faster if the go routines would not switch a lot like in this test.",
-			authors:     []string{"Mia Heidenstedt <heidenstedt.org>"},
+			authors:     []string{"[Mia Heidenstedt](https://heidenstedt.org)"},
 			features:    []string{"MPMC", "FIFO"},
 			newQueue: func(capacity uint64) interface {
 				Enqueue(*int)
@@ -388,7 +403,7 @@ func getImplementations() []Implementation[*int, interface {
 			name:        "BasicMPMCQueue",
 			pkgName:     "basicmpmc",
 			description: "A basic MPMC queue with no optimizations.",
-			authors:     []string{"Mia Heidenstedt <heidenstedt.org>", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
+			authors:     []string{"[Mia Heidenstedt](https://heidenstedt.org)", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
 			features:    []string{"MPMC", "FIFO"},
 			newQueue: func(capacity uint64) interface {
 				Enqueue(*int)
@@ -403,7 +418,7 @@ func getImplementations() []Implementation[*int, interface {
 			name:        "OptimizedMPMCQueue",
 			pkgName:     "optmpmc",
 			description: "An optimized MPMC queue with padding to reduce false sharing.",
-			authors:     []string{"Mia Heidenstedt <heidenstedt.org>", "OpenAI o1[*](#why-are-there-llms-listed-as-authors)"},
+			authors:     []string{"[Mia Heidenstedt](https://heidenstedt.org)", "OpenAI o1[*](#why-are-there-llms-listed-as-authors)"},
 			features:    []string{"MPMC", "FIFO"},
 			newQueue: func(capacity uint64) interface {
 				Enqueue(*int)
@@ -418,7 +433,7 @@ func getImplementations() []Implementation[*int, interface {
 			name:        "OptimizedMPMCQueueSharded",
 			pkgName:     "optmpmc_sharded",
 			description: "An optimized MPMC queue with sharding to reduce contention.",
-			authors:     []string{"Mia Heidenstedt <heidenstedt.org>", "OpenAI o1[*](#why-are-there-llms-listed-as-authors)"},
+			authors:     []string{"[Mia Heidenstedt](https://heidenstedt.org)", "OpenAI o1[*](#why-are-there-llms-listed-as-authors)"},
 			features:    []string{"MPMC", "Sharded", "Multi-Head-FIFO"},
 			newQueue: func(capacity uint64) interface {
 				Enqueue(*int)
@@ -433,7 +448,7 @@ func getImplementations() []Implementation[*int, interface {
 			name:        "FastMPMCQueue",
 			pkgName:     "fastmpmc",
 			description: "A highly optimized MPMC queue with cache-friendly memory layout and minimal contention.",
-			authors:     []string{"Mia Heidenstedt <heidenstedt.org>", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
+			authors:     []string{"[Mia Heidenstedt](https://heidenstedt.org)", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
 			features:    []string{"MPMC", "FIFO", "Cache-Optimized"},
 			newQueue: func(capacity uint64) interface {
 				Enqueue(*int)
@@ -448,7 +463,7 @@ func getImplementations() []Implementation[*int, interface {
 			name:        "FastMPMCQueueTicket",
 			pkgName:     "fastmpmc_ticket",
 			description: "An optimized MPMC queue using a ticket-based reservation system to minimize contention.",
-			authors:     []string{"Mia Heidenstedt <heidenstedt.org>", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
+			authors:     []string{"[Mia Heidenstedt](https://heidenstedt.org)", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
 			features:    []string{"MPMC", "FIFO", "Cache-Optimized", "Ticket-Based"},
 			newQueue: func(capacity uint64) interface {
 				Enqueue(*int)
@@ -463,7 +478,7 @@ func getImplementations() []Implementation[*int, interface {
 			name:        "MultiHeadQueue",
 			pkgName:     "multiheadqueue",
 			description: "A sharded, multi-head FIFO queue that reduces contention by dividing capacity among independent ring buffers.",
-			authors:     []string{"Mia Heidenstedt <heidenstedt.org>", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
+			authors:     []string{"[Mia Heidenstedt](https://heidenstedt.org)", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
 			features:    []string{"MPMC", "Multi-Head-FIFO", "Sharded", "Low Latency"},
 			newQueue: func(capacity uint64) interface {
 				Enqueue(*int)
@@ -478,7 +493,7 @@ func getImplementations() []Implementation[*int, interface {
 			name:        "VortexQueue",
 			pkgName:     "vortexqueue",
 			description: "An ultra-fast MPMC queue using optimized spin-waiting for reduced contention.",
-			authors:     []string{"Mia Heidenstedt <heidenstedt.org>", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
+			authors:     []string{"[Mia Heidenstedt](https://heidenstedt.org)", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
 			features:    []string{"MPMC", "FIFO", "Cache-Optimized", "Spin-Wait"},
 			newQueue: func(capacity uint64) interface {
 				Enqueue(*int)
@@ -493,7 +508,7 @@ func getImplementations() []Implementation[*int, interface {
 			name:        "LightningQueue",
 			pkgName:     "lightningqueue",
 			description: "A high-performance MPMC queue optimized for low latency and minimal contention.",
-			authors:     []string{"Mia Heidenstedt <heidenstedt.org>", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
+			authors:     []string{"[Mia Heidenstedt](https://heidenstedt.org)", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
 			features:    []string{"MPMC", "FIFO", "Cache-Optimized", "Ultra-Low-Latency"},
 			newQueue: func(capacity uint64) interface {
 				Enqueue(*int)
