@@ -1,6 +1,7 @@
 package main
 
 import (
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -71,33 +72,36 @@ type testQueueInterface = interface {
 
 // withAllQueues is a test helper that loops over all implementations
 // and calls your test function for each one.
+// NOTE: Feature filtering is done inside the subtest to avoid skipping at parent level.
 func withAllQueues(t *testing.T, scenarioName string, testedFeatures []string, fn func(t *testing.T, impl Implementation[*int, testQueueInterface])) {
 	t.Helper()
 	impls := getImplementations()
 	for _, impl := range impls {
 		impl := impl // capture range variable
 
-		// check if the test tests a feature that the implementation does not support, if nil it will be tested
-		if testedFeatures != nil {
-			for _, feature := range testedFeatures {
-				found := false
-				for _, implFeature := range impl.features {
-					if feature == implFeature {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Skipf("Skipping test %q for implementation %q: missing feature %q \n", scenarioName, impl.name, feature)
-				}
-			}
-		}
-
 		t.Run(impl.name, func(t *testing.T) {
 			if impl.newQueue == nil {
 				t.Skipf("Skipping stub implementation %q", impl.name)
 				return
 			}
+
+			// Check if the test tests a feature that the implementation does not support
+			if testedFeatures != nil {
+				for _, feature := range testedFeatures {
+					found := false
+					for _, implFeature := range impl.features {
+						if feature == implFeature {
+							found = true
+							break
+						}
+					}
+					if !found {
+						t.Skipf("Skipping: missing feature %q", feature)
+						return
+					}
+				}
+			}
+
 			fn(t, impl)
 		})
 	}
@@ -658,6 +662,100 @@ func TestAlternatingSingleCapacity(t *testing.T) {
 	})
 }
 
+// TestZeroCapacityQueue tests behavior when creating a queue with zero capacity.
+// Implementations may handle this differently - some may panic, others may
+// create a minimum capacity queue. This test documents the behavior.
+func TestZeroCapacityQueue(t *testing.T) {
+	withAllQueues(t, "ZeroCapacityQueue", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+		// This test uses recover to handle potential panics from invalid capacity
+		defer func() {
+			if r := recover(); r != nil {
+				t.Logf("Implementation panics on zero capacity creation (acceptable): %v", r)
+			}
+		}()
+
+		q := impl.newQueue(0)
+
+		// If we get here, the implementation accepts zero capacity
+		// Check what the actual behavior is
+		freeSlots := q.FreeSlots()
+		usedSlots := q.UsedSlots()
+
+		t.Logf("Zero capacity queue created: FreeSlots=%d, UsedSlots=%d", freeSlots, usedSlots)
+
+		// If FreeSlots > 0, the implementation likely uses a minimum capacity
+		if freeSlots > 0 {
+			t.Logf("Implementation uses minimum capacity of %d", freeSlots)
+
+			// Try to use it
+			val := 42
+			done := make(chan bool, 1)
+			panicChan := make(chan interface{}, 1)
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						panicChan <- r
+					}
+				}()
+				q.Enqueue(&val)
+				done <- true
+			}()
+
+			select {
+			case <-done:
+				// Enqueue succeeded
+				ptr, ok := q.Dequeue()
+				if !ok {
+					t.Error("Dequeue failed after enqueue on zero-capacity queue")
+				} else if *ptr != 42 {
+					t.Errorf("Value mismatch: expected 42, got %d", *ptr)
+				}
+			case r := <-panicChan:
+				t.Logf("Enqueue panics on zero-capacity queue (needs fix): %v", r)
+			case <-time.After(100 * time.Millisecond):
+				t.Log("Enqueue blocks on zero capacity queue (may never complete)")
+			}
+		} else {
+			// FreeSlots is 0, so queue truly has zero capacity
+			// Enqueue should block forever - test with timeout
+			val := 42
+			done := make(chan bool, 1)
+			panicChan := make(chan interface{}, 1)
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						panicChan <- r
+					}
+				}()
+				q.Enqueue(&val)
+				done <- true
+			}()
+
+			select {
+			case <-done:
+				t.Error("Enqueue completed on truly zero-capacity queue - this seems wrong")
+			case r := <-panicChan:
+				t.Logf("Enqueue panics on zero-capacity queue (implementation bug - should block or use min capacity): %v", r)
+			case <-time.After(100 * time.Millisecond):
+				t.Log("Enqueue correctly blocks on zero-capacity queue")
+			}
+
+			// Dequeue should return immediately with false (but may also panic)
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Logf("Dequeue panics on zero-capacity queue: %v", r)
+					}
+				}()
+				_, ok := q.Dequeue()
+				if ok {
+					t.Error("Dequeue returned true on empty zero-capacity queue")
+				}
+			}()
+		}
+	})
+}
+
 func TestFIFOPointerIntegrity(t *testing.T) {
 	withAllQueues(t, "PointerIntegrity", []string{"FIFO"}, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
 		q := impl.newQueue(1024)
@@ -904,6 +1002,666 @@ func TestConcurrentNonFIFOMultiRW(t *testing.T) {
 		}
 		if consumedCount.Load() != uint64(totalItems) {
 			t.Fatalf("Consumed count mismatch: expected %d, got %d", totalItems, consumedCount.Load())
+		}
+	})
+}
+
+// =============================================================================
+// Full Queue Blocking Tests
+// =============================================================================
+// These tests verify that when a queue is full, Enqueue blocks rather than
+// dropping items. This is a critical correctness requirement.
+// =============================================================================
+
+// TestFullQueueBlockingMultipleProducers verifies that multiple goroutines
+// trying to enqueue on a full queue all block until space becomes available.
+func TestFullQueueBlockingMultipleProducers(t *testing.T) {
+	withAllQueues(t, "FullQueueBlockingMultipleProducers", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+		const capacity = 64
+		const numBlockedProducers = 10
+
+		q := impl.newQueue(capacity)
+		wd := newWatchdog(t, "FullQueueBlockingMultipleProducers")
+		wd.Start()
+		defer wd.Stop()
+
+		// Fill the queue to capacity
+		for i := 0; i < capacity; i++ {
+			x := i
+			q.Enqueue(&x)
+			wd.Progress()
+		}
+
+		// Verify queue is full
+		if q.FreeSlots() != 0 {
+			t.Fatalf("Expected FreeSlots=0 after filling, got %d", q.FreeSlots())
+		}
+
+		// Track which producers have completed
+		completed := make([]atomic.Bool, numBlockedProducers)
+		var allStarted sync.WaitGroup
+		allStarted.Add(numBlockedProducers)
+
+		// Launch producers that should all block
+		for i := 0; i < numBlockedProducers; i++ {
+			go func(id int) {
+				allStarted.Done() // Signal that this goroutine has started
+				val := 1000 + id
+				q.Enqueue(&val) // This should block
+				completed[id].Store(true)
+				wd.Progress()
+			}(i)
+		}
+
+		// Wait for all producers to start
+		allStarted.Wait()
+
+		// Give them time to potentially complete (they shouldn't)
+		time.Sleep(100 * time.Millisecond)
+
+		// Verify none have completed (all should be blocked)
+		for i := 0; i < numBlockedProducers; i++ {
+			if completed[i].Load() {
+				t.Errorf("Producer %d completed when it should have blocked", i)
+			}
+		}
+
+		// Now dequeue items to make space
+		for i := 0; i < numBlockedProducers; i++ {
+			_, ok := q.Dequeue()
+			if !ok {
+				t.Fatalf("Failed to dequeue item %d", i)
+			}
+			wd.Progress()
+		}
+
+		// Wait for blocked producers to complete
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			allDone := true
+			for i := 0; i < numBlockedProducers; i++ {
+				if !completed[i].Load() {
+					allDone = false
+					break
+				}
+			}
+			if allDone {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		// Verify all producers eventually completed
+		for i := 0; i < numBlockedProducers; i++ {
+			if !completed[i].Load() {
+				t.Errorf("Producer %d never completed after space was freed", i)
+			}
+		}
+	})
+}
+
+// TestFullQueueNoDataLoss verifies that no items are lost when the queue
+// reaches capacity under high contention.
+func TestFullQueueNoDataLoss(t *testing.T) {
+	withAllQueues(t, "FullQueueNoDataLoss", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+		const capacity = 128
+		const numProducers = 20
+		const itemsPerProducer = 500
+		const totalItems = numProducers * itemsPerProducer
+
+		q := impl.newQueue(capacity)
+		wd := newWatchdog(t, "FullQueueNoDataLoss")
+		wd.Start()
+		defer wd.Stop()
+
+		// Track all items with unique pointers
+		var enqueuedMu sync.Mutex
+		enqueuedItems := make(map[*int]int, totalItems)
+
+		var dequeuedMu sync.Mutex
+		dequeuedItems := make(map[*int]int, totalItems)
+
+		var prodWg sync.WaitGroup
+		var consumerDone atomic.Bool
+		var dequeuedCount atomic.Int64
+
+		// Start producers
+		prodWg.Add(numProducers)
+		for p := 0; p < numProducers; p++ {
+			go func(producerID int) {
+				defer prodWg.Done()
+				for i := 0; i < itemsPerProducer; i++ {
+					ptr := new(int)
+					val := producerID*itemsPerProducer + i
+					*ptr = val
+
+					enqueuedMu.Lock()
+					enqueuedItems[ptr] = val
+					enqueuedMu.Unlock()
+
+					q.Enqueue(ptr) // Should block if full, never drop
+					wd.Progress()
+				}
+			}(p)
+		}
+
+		// Start consumer
+		go func() {
+			for !consumerDone.Load() || q.UsedSlots() > 0 {
+				ptr, ok := q.Dequeue()
+				if ok {
+					dequeuedMu.Lock()
+					dequeuedItems[ptr] = *ptr
+					dequeuedMu.Unlock()
+					dequeuedCount.Add(1)
+					wd.Progress()
+				} else {
+					time.Sleep(1 * time.Microsecond)
+				}
+			}
+		}()
+
+		// Wait for all producers to finish
+		prodWg.Wait()
+		consumerDone.Store(true)
+
+		// Wait for consumer to drain
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) && dequeuedCount.Load() < int64(totalItems) {
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		// Verify no data loss
+		enqueuedMu.Lock()
+		dequeuedMu.Lock()
+		defer enqueuedMu.Unlock()
+		defer dequeuedMu.Unlock()
+
+		if len(enqueuedItems) != totalItems {
+			t.Errorf("Enqueued count mismatch: expected %d, got %d", totalItems, len(enqueuedItems))
+		}
+
+		if len(dequeuedItems) != totalItems {
+			t.Errorf("Dequeued count mismatch: expected %d, got %d", totalItems, len(dequeuedItems))
+		}
+
+		// Check for lost items
+		lost := 0
+		for ptr, val := range enqueuedItems {
+			if _, found := dequeuedItems[ptr]; !found {
+				lost++
+				if lost <= 10 {
+					t.Errorf("LOST ITEM: pointer %p with value %d was never dequeued", ptr, val)
+				}
+			}
+		}
+
+		if lost > 0 {
+			t.Fatalf("DATA LOSS DETECTED: %d items lost out of %d (%.2f%%)",
+				lost, totalItems, float64(lost)/float64(totalItems)*100)
+		}
+	})
+}
+
+// TestFullQueueBlockingWithConcurrentDequeue tests that when producers block
+// on a full queue, they correctly resume when consumers make space.
+func TestFullQueueBlockingWithConcurrentDequeue(t *testing.T) {
+	withAllQueues(t, "FullQueueBlockingWithConcurrentDequeue", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+		const capacity = 32
+		const numProducers = 10
+		const numConsumers = 5
+		const itemsPerProducer = 200
+		const totalItems = numProducers * itemsPerProducer
+
+		q := impl.newQueue(capacity)
+		wd := newWatchdog(t, "FullQueueBlockingWithConcurrentDequeue")
+		wd.Start()
+		defer wd.Stop()
+
+		var enqueuedCount atomic.Int64
+		var dequeuedCount atomic.Int64
+		var prodWg sync.WaitGroup
+		var consWg sync.WaitGroup
+
+		// Start producers - they will block when queue is full
+		prodWg.Add(numProducers)
+		for p := 0; p < numProducers; p++ {
+			go func(producerID int) {
+				defer prodWg.Done()
+				for i := 0; i < itemsPerProducer; i++ {
+					val := producerID*itemsPerProducer + i
+					ptr := new(int)
+					*ptr = val
+					q.Enqueue(ptr) // Blocks if full
+					enqueuedCount.Add(1)
+					if i%50 == 0 {
+						wd.Progress()
+					}
+				}
+			}(p)
+		}
+
+		// Start consumers - they drain the queue
+		consWg.Add(numConsumers)
+		for c := 0; c < numConsumers; c++ {
+			go func() {
+				defer consWg.Done()
+				for dequeuedCount.Load() < int64(totalItems) {
+					_, ok := q.Dequeue()
+					if ok {
+						dequeuedCount.Add(1)
+						wd.Progress()
+					} else {
+						time.Sleep(1 * time.Microsecond)
+					}
+				}
+			}()
+		}
+
+		// Wait for producers to finish
+		prodWg.Wait()
+
+		// Wait for consumers to finish with timeout
+		done := make(chan struct{})
+		go func() {
+			consWg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			// Success
+		case <-time.After(30 * time.Second):
+			t.Fatalf("Timeout waiting for consumers - possible deadlock. Enqueued: %d, Dequeued: %d",
+				enqueuedCount.Load(), dequeuedCount.Load())
+		}
+
+		// Verify counts match
+		if enqueuedCount.Load() != int64(totalItems) {
+			t.Errorf("Enqueue count mismatch: expected %d, got %d", totalItems, enqueuedCount.Load())
+		}
+		if dequeuedCount.Load() != int64(totalItems) {
+			t.Errorf("Dequeue count mismatch: expected %d, got %d", totalItems, dequeuedCount.Load())
+		}
+
+		// Queue should be empty
+		if q.UsedSlots() != 0 {
+			t.Errorf("Queue not empty: UsedSlots=%d", q.UsedSlots())
+		}
+	})
+}
+
+// =============================================================================
+// Counter Consistency Tests
+// =============================================================================
+
+// TestCountersAccurateAfterWrapAround verifies that UsedSlots and FreeSlots
+// remain accurate after many ring buffer wrap-arounds.
+func TestCountersAccurateAfterWrapAround(t *testing.T) {
+	withAllQueues(t, "CountersAccurateAfterWrapAround", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+		const capacity = 64
+		const iterations = 100000 // Many wrap-arounds
+
+		q := impl.newQueue(capacity)
+		wd := newWatchdog(t, "CountersAccurateAfterWrapAround")
+		wd.Start()
+		defer wd.Stop()
+
+		// Initial state check
+		if q.UsedSlots() != 0 {
+			t.Fatalf("Initial UsedSlots should be 0, got %d", q.UsedSlots())
+		}
+		if q.FreeSlots() != capacity {
+			t.Fatalf("Initial FreeSlots should be %d, got %d", capacity, q.FreeSlots())
+		}
+
+		// Run many enqueue/dequeue cycles
+		for i := 0; i < iterations; i++ {
+			val := i
+			q.Enqueue(&val)
+
+			// Periodically check counters
+			if i%10000 == 0 {
+				used := q.UsedSlots()
+				free := q.FreeSlots()
+				if used+free != capacity {
+					t.Errorf("Counter inconsistency at iteration %d: used=%d, free=%d, sum=%d (expected %d)",
+						i, used, free, used+free, capacity)
+				}
+				wd.Progress()
+			}
+
+			// Dequeue
+			_, ok := q.Dequeue()
+			if !ok {
+				t.Fatalf("Failed to dequeue at iteration %d", i)
+			}
+		}
+
+		// Final state check
+		if q.UsedSlots() != 0 {
+			t.Errorf("Final UsedSlots should be 0, got %d", q.UsedSlots())
+		}
+		if q.FreeSlots() != capacity {
+			t.Errorf("Final FreeSlots should be %d, got %d", capacity, q.FreeSlots())
+		}
+	})
+}
+
+// =============================================================================
+// Near-Boundary Race Condition Tests
+// =============================================================================
+
+// TestRaceOnNearFullQueue creates race conditions when the queue is nearly full.
+func TestRaceOnNearFullQueue(t *testing.T) {
+	withAllQueues(t, "RaceOnNearFullQueue", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+		const capacity = 64
+		const numGoroutines = 20
+		const iterations = 500
+
+		q := impl.newQueue(capacity)
+		wd := newWatchdog(t, "RaceOnNearFullQueue")
+		wd.Start()
+		defer wd.Stop()
+
+		for round := 0; round < iterations; round++ {
+			// Fill to capacity - 1
+			for i := 0; i < int(capacity)-1; i++ {
+				val := i
+				q.Enqueue(&val)
+			}
+
+			var wg sync.WaitGroup
+			var enqueueSuccess atomic.Int64
+			var dequeueSuccess atomic.Int64
+
+			// Race: multiple goroutines try to enqueue/dequeue simultaneously
+			wg.Add(numGoroutines * 2)
+
+			// Enqueuers
+			for i := 0; i < numGoroutines; i++ {
+				go func(id int) {
+					defer wg.Done()
+					val := 1000 + id
+					// Use a timeout to avoid blocking forever
+					done := make(chan struct{})
+					go func() {
+						q.Enqueue(&val)
+						enqueueSuccess.Add(1)
+						close(done)
+					}()
+					select {
+					case <-done:
+					case <-time.After(100 * time.Millisecond):
+						// Enqueue is blocking (expected behavior)
+					}
+				}(i)
+			}
+
+			// Dequeuers
+			for i := 0; i < numGoroutines; i++ {
+				go func() {
+					defer wg.Done()
+					if _, ok := q.Dequeue(); ok {
+						dequeueSuccess.Add(1)
+					}
+				}()
+			}
+
+			wg.Wait()
+
+			// Drain remaining
+			drained := 0
+			for {
+				if _, ok := q.Dequeue(); ok {
+					drained++
+				} else {
+					break
+				}
+			}
+
+			// Verify queue is empty
+			if q.UsedSlots() != 0 {
+				t.Errorf("Round %d: Queue not empty after drain, UsedSlots=%d", round, q.UsedSlots())
+			}
+
+			if round%100 == 0 {
+				wd.Progress()
+			}
+		}
+	})
+}
+
+// TestRaceOnNearEmptyQueue creates race conditions when the queue is nearly empty.
+func TestRaceOnNearEmptyQueue(t *testing.T) {
+	withAllQueues(t, "RaceOnNearEmptyQueue", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+		const capacity = 64
+		const numGoroutines = 20
+		const iterations = 500
+
+		q := impl.newQueue(capacity)
+		wd := newWatchdog(t, "RaceOnNearEmptyQueue")
+		wd.Start()
+		defer wd.Stop()
+
+		for round := 0; round < iterations; round++ {
+			// Add exactly 1 item
+			val := 42
+			q.Enqueue(&val)
+
+			var wg sync.WaitGroup
+			var dequeueSuccess atomic.Int64
+			var enqueueSuccess atomic.Int64
+
+			wg.Add(numGoroutines * 2)
+
+			// Dequeuers - race to get the single item
+			for i := 0; i < numGoroutines; i++ {
+				go func() {
+					defer wg.Done()
+					if _, ok := q.Dequeue(); ok {
+						dequeueSuccess.Add(1)
+					}
+				}()
+			}
+
+			// Enqueuers - add more items
+			for i := 0; i < numGoroutines; i++ {
+				go func(id int) {
+					defer wg.Done()
+					v := id
+					q.Enqueue(&v)
+					enqueueSuccess.Add(1)
+				}(i)
+			}
+
+			wg.Wait()
+
+			// Verify exactly 1 dequeue succeeded for the original item
+			// (plus potentially more from the enqueued items)
+			totalEnqueued := int64(1) + enqueueSuccess.Load()
+			totalDequeued := dequeueSuccess.Load()
+
+			// Drain remaining
+			for {
+				if _, ok := q.Dequeue(); ok {
+					totalDequeued++
+				} else {
+					break
+				}
+			}
+
+			if totalDequeued != totalEnqueued {
+				t.Errorf("Round %d: Item count mismatch: enqueued=%d, dequeued=%d",
+					round, totalEnqueued, totalDequeued)
+			}
+
+			if round%100 == 0 {
+				wd.Progress()
+			}
+		}
+	})
+}
+
+// =============================================================================
+// FIFO Ordering Under Backpressure Tests
+// =============================================================================
+
+// TestNoReorderingOnBackpressure verifies that when the queue fills up and
+// producers block, the FIFO order is maintained when they eventually enqueue.
+func TestNoReorderingOnBackpressure(t *testing.T) {
+	withAllQueues(t, "NoReorderingOnBackpressure", []string{"FIFO"}, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+		const capacity = 32
+		const totalItems = 200
+
+		q := impl.newQueue(capacity)
+		wd := newWatchdog(t, "NoReorderingOnBackpressure")
+		wd.Start()
+		defer wd.Stop()
+
+		// Create ordered pointers
+		pointers := make([]*int, totalItems)
+		for i := 0; i < totalItems; i++ {
+			p := new(int)
+			*p = i
+			pointers[i] = p
+		}
+
+		// Producer goroutine - enqueues in order, will block when full
+		go func() {
+			for i := 0; i < totalItems; i++ {
+				q.Enqueue(pointers[i])
+				wd.Progress()
+			}
+		}()
+
+		// Consumer - dequeue with intentional delays to create backpressure
+		received := make([]*int, 0, totalItems)
+		for len(received) < totalItems {
+			ptr, ok := q.Dequeue()
+			if ok {
+				received = append(received, ptr)
+				// Add some delay to create backpressure
+				if len(received)%10 == 0 {
+					time.Sleep(1 * time.Millisecond)
+				}
+				wd.Progress()
+			} else {
+				time.Sleep(1 * time.Microsecond)
+			}
+		}
+
+		// Verify FIFO order maintained
+		orderViolations := 0
+		for i := 0; i < totalItems; i++ {
+			if received[i] != pointers[i] {
+				orderViolations++
+				if orderViolations <= 10 {
+					t.Errorf("FIFO violation at index %d: expected ptr %p (val %d), got ptr %p (val %d)",
+						i, pointers[i], *pointers[i], received[i], *received[i])
+				}
+			}
+		}
+
+		if orderViolations > 0 {
+			t.Fatalf("FIFO ORDER VIOLATED UNDER BACKPRESSURE: %d violations out of %d items",
+				orderViolations, totalItems)
+		}
+	})
+}
+
+// =============================================================================
+// GC Stress Test
+// =============================================================================
+
+// TestGCDoesntCorruptQueue forces garbage collection during queue operations
+// to verify that GC doesn't corrupt queue state or stored pointers.
+func TestGCDoesntCorruptQueue(t *testing.T) {
+	withAllQueues(t, "GCDoesntCorruptQueue", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+		const capacity = 256
+		const numProducers = 4
+		const numConsumers = 4
+		const itemsPerProducer = 1000
+		const totalItems = numProducers * itemsPerProducer
+
+		q := impl.newQueue(capacity)
+		wd := newWatchdog(t, "GCDoesntCorruptQueue")
+		wd.Start()
+		defer wd.Stop()
+
+		var enqueuedCount atomic.Int64
+		var dequeuedCount atomic.Int64
+		var prodWg sync.WaitGroup
+		var consWg sync.WaitGroup
+		var stopConsumers atomic.Bool
+
+		// Start a GC stress goroutine
+		stopGC := make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(10 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					runtime.GC()
+				case <-stopGC:
+					return
+				}
+			}
+		}()
+
+		// Producers
+		prodWg.Add(numProducers)
+		for p := 0; p < numProducers; p++ {
+			go func(producerID int) {
+				defer prodWg.Done()
+				for i := 0; i < itemsPerProducer; i++ {
+					ptr := new(int)
+					*ptr = producerID*itemsPerProducer + i
+					q.Enqueue(ptr)
+					enqueuedCount.Add(1)
+					if i%200 == 0 {
+						wd.Progress()
+					}
+				}
+			}(p)
+		}
+
+		// Consumers
+		consWg.Add(numConsumers)
+		for c := 0; c < numConsumers; c++ {
+			go func() {
+				defer consWg.Done()
+				for !stopConsumers.Load() || q.UsedSlots() > 0 {
+					ptr, ok := q.Dequeue()
+					if ok {
+						// Verify pointer is still valid by reading it
+						_ = *ptr
+						dequeuedCount.Add(1)
+						wd.Progress()
+					} else {
+						time.Sleep(1 * time.Microsecond)
+					}
+				}
+			}()
+		}
+
+		// Wait for producers
+		prodWg.Wait()
+		stopConsumers.Store(true)
+
+		// Wait for consumers
+		consWg.Wait()
+
+		// Stop GC stress
+		close(stopGC)
+
+		// Verify counts
+		if enqueuedCount.Load() != int64(totalItems) {
+			t.Errorf("Enqueue count mismatch: expected %d, got %d", totalItems, enqueuedCount.Load())
+		}
+		if dequeuedCount.Load() != int64(totalItems) {
+			t.Errorf("Dequeue count mismatch: expected %d, got %d", totalItems, dequeuedCount.Load())
 		}
 	})
 }

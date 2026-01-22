@@ -433,7 +433,7 @@ func getImplementations() []Implementation[*int, interface {
 			pkgName:     "optmpmc_sharded",
 			description: "An optimized MPMC queue with sharding to reduce contention.",
 			authors:     []string{"[Mia Heidenstedt](https://heidenstedt.org)", "OpenAI o1[*](#why-are-there-llms-listed-as-authors)"},
-			features:    []string{"MPMC", "Sharded"},
+			features:    []string{"MPMC", "Sharded", "Multi-Head-FIFO"},
 			newQueue: func(capacity uint64) interface {
 				Enqueue(*int)
 				Dequeue() (*int, bool)

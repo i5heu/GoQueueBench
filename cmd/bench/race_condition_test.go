@@ -106,7 +106,7 @@ func (rd *raceDetector) findLostItems() []int64 {
 // producers and few consumers to detect lost items due to race conditions in
 // dequeue methods.
 func TestDequeueRaceConditionLostItems(t *testing.T) {
-	withAllQueuesFixed(t, "DequeueRaceConditionLostItems", []string{"MPMC"}, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+	withAllQueuesFixed(t, "DequeueRaceConditionLostItems", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
 		// Test configuration - small capacity to force contention
 		const capacity = 64
 		const numProducers = 20
@@ -369,7 +369,7 @@ func TestSingleShotDequeueFailure(t *testing.T) {
 // TestConcurrentSingleShotDequeue tests the single-shot dequeue behavior under
 // concurrent load where the race conditions are more likely to manifest.
 func TestConcurrentSingleShotDequeue(t *testing.T) {
-	withAllQueuesFixed(t, "ConcurrentSingleShotDequeue", []string{"MPMC"}, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+	withAllQueuesFixed(t, "ConcurrentSingleShotDequeue", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
 		const capacity = 32
 		const numProducers = 10
 		const numConsumers = 10
@@ -822,7 +822,7 @@ func TestShardStarvationDetection(t *testing.T) {
 // TestConcurrentEmptyDetectionRace creates high contention on empty queue
 // detection to reveal race conditions.
 func TestConcurrentEmptyDetectionRace(t *testing.T) {
-	withAllQueuesFixed(t, "ConcurrentEmptyDetectionRace", []string{"MPMC"}, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+	withAllQueuesFixed(t, "ConcurrentEmptyDetectionRace", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
 		const capacity = 32 // Small capacity for higher contention
 		const rounds = 100
 		const itemsPerRound = 100
@@ -970,7 +970,7 @@ func TestFalseEmptyDetection(t *testing.T) {
 // TestRapidEnqueueDequeueEmptyRace rapidly enqueues and dequeues to create
 // race conditions around the empty state.
 func TestRapidEnqueueDequeueEmptyRace(t *testing.T) {
-	withAllQueuesFixed(t, "RapidEnqueueDequeueEmptyRace", []string{"MPMC"}, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+	withAllQueuesFixed(t, "RapidEnqueueDequeueEmptyRace", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
 		const capacity = 16 // Very small for maximum contention
 		const duration = 3 * time.Second
 
@@ -1282,7 +1282,7 @@ func TestHighContentionStress(t *testing.T) {
 		t.Skip("Skipping stress test in short mode")
 	}
 
-	withAllQueuesFixed(t, "HighContentionStress", []string{"MPMC"}, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+	withAllQueuesFixed(t, "HighContentionStress", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
 		const capacity = 128
 		const duration = 3 * time.Second
 		const numProducers = 20
@@ -1445,7 +1445,7 @@ func TestSequentialConsistency(t *testing.T) {
 // (zero, false) after a single failed CAS (Compare-and-Swap), even when items may be available.
 // This is the most common bug pattern in the implementations.
 func TestDequeueReturnsEarlyBug(t *testing.T) {
-	withAllQueuesFixed(t, "DequeueReturnsEarlyBug", []string{"MPMC"}, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+	withAllQueuesFixed(t, "DequeueReturnsEarlyBug", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
 		const capacity = 8 // Very small to maximize contention
 		const numGoroutines = 100
 		const opsPerGoroutine = 100
@@ -1693,7 +1693,7 @@ func TestSequenceNumberWrapBug(t *testing.T) {
 // TestEnqueuePosDequeuePosDrift tests for drift between enqueuePos and dequeuePos
 // that could cause the empty detection to fail.
 func TestEnqueuePosDequeuePosDrift(t *testing.T) {
-	withAllQueuesFixed(t, "EnqueuePosDequeuePosDrift", []string{"MPMC"}, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+	withAllQueuesFixed(t, "EnqueuePosDequeuePosDrift", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
 		const capacity = 128
 		const rounds = 50
 		const itemsPerRound = 1000
@@ -1777,7 +1777,7 @@ func TestEnqueuePosDequeuePosDrift(t *testing.T) {
 // TestCASRetryStarvation tests for starvation where repeated CAS failures
 // cause some items to never be dequeued.
 func TestCASRetryStarvation(t *testing.T) {
-	withAllQueuesFixed(t, "CASRetryStarvation", []string{"MPMC"}, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
+	withAllQueuesFixed(t, "CASRetryStarvation", nil, func(t *testing.T, impl Implementation[*int, testQueueInterface]) {
 		const capacity = 16 // Very small for maximum CAS contention
 		const numProducers = 50
 		const numConsumers = 50
