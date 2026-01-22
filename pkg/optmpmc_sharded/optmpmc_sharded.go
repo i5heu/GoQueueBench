@@ -42,6 +42,12 @@ type ShardedOptimizedMPMCQueue[T any] struct {
 // and the logical capacity is partitioned among shards so that the sum equals the requested capacity.
 // Each shard's internal buffer is allocated with a capacity that is a power‑of‑two.
 func New[T any](capacity uint64) *ShardedOptimizedMPMCQueue[T] {
+	// Enforce minimum capacity to ensure proper queue behavior.
+	// Each shard needs at least 1 slot to function correctly.
+	if capacity < 1 {
+		capacity = 1
+	}
+
 	const minShardCap = 64
 	var numShards uint64 = uint64(runtime.NumCPU())
 	if capacity < minShardCap {
@@ -57,6 +63,7 @@ func New[T any](capacity uint64) *ShardedOptimizedMPMCQueue[T] {
 	// Compute the base logical capacity per shard.
 	base := capacity / numShards
 	// p is the largest power‑of‑two less than or equal to base.
+	// Ensure p is at least 1 to avoid zero-capacity shards.
 	var p uint64 = 1
 	for p*2 <= base {
 		p *= 2
@@ -65,18 +72,20 @@ func New[T any](capacity uint64) *ShardedOptimizedMPMCQueue[T] {
 	k := int(capacity/p) - int(numShards)
 
 	shards := make([]*shard[T], numShards)
+	var actualCapacity uint64
 	for i := uint64(0); i < numShards; i++ {
 		capForShard := p
 		if int(i) < k {
 			capForShard = 2 * p
 		}
 		shards[i] = newShard[T](capForShard)
+		actualCapacity += capForShard
 	}
 
 	return &ShardedOptimizedMPMCQueue[T]{
 		shards:        shards,
 		numShards:     numShards,
-		totalCapacity: capacity, // logical capacity exactly as requested
+		totalCapacity: actualCapacity, // Use actual capacity from shards, not requested
 	}
 }
 
@@ -139,10 +148,15 @@ func (q *ShardedOptimizedMPMCQueue[T]) Dequeue() (T, bool) {
 				atomic.StoreUint64(&cell.sequence, pos+s.capacity)
 				return ret, true
 			}
+			// CAS failed - another consumer got it, yield before retry
+			runtime.Gosched()
 		} else {
 			if q.checkAllEmpty() {
 				break
 			}
+			// Shard not ready but queue not empty - yield before retry
+			// This prevents infinite spinning under high contention
+			runtime.Gosched()
 		}
 	}
 	var zero T

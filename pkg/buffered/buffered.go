@@ -5,6 +5,12 @@ type BufferedQueue[T any] struct {
 }
 
 func New[T any](bufferSize uint64) *BufferedQueue[T] {
+	// Enforce minimum capacity of 1 to ensure proper bounded buffer semantics.
+	// A zero-capacity Go channel is an unbuffered synchronization primitive,
+	// not a zero-capacity buffer, which would cause unexpected behavior.
+	if bufferSize < 1 {
+		bufferSize = 1
+	}
 	return &BufferedQueue[T]{
 		ch: make(chan T, bufferSize),
 	}
