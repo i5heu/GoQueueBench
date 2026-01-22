@@ -176,7 +176,7 @@ func main() {
 	trueCpuCount := runtime.NumCPU()
 	var cpuSettings []int
 	// Define the common CPU/vCPU settings.
-	commonCPUs := []int{1, 2, 3, 4, 6, 8, 12, 16, 32, 48, 56, 64, 96, 128, 192, 256, 384, 512}
+	commonCPUs := []int{1, 2, 3, 4, 6, 8, 12, 16, 18, 20, 24, 32, 48, 56, 64, 96, 128, 192, 256, 384, 512}
 
 	if *cpuMaxFlag > 0 {
 		desired := *cpuMaxFlag
@@ -203,11 +203,13 @@ func main() {
 			testbench.Config{NumProducers: 100, NumConsumers: 100},
 			testbench.Config{NumProducers: 250, NumConsumers: 250},
 			testbench.Config{NumProducers: 500, NumConsumers: 500},
+			testbench.Config{NumProducers: 1000, NumConsumers: 1000},
+			testbench.Config{NumProducers: 2500, NumConsumers: 2500},
 		)
 	}
 
 	// Test duration for each iteration.
-	testDuration := 5 * time.Second
+	testDuration := 8 * time.Second
 
 	// Calculate total number of tests for progress tracking.
 	impls := getImplementations()

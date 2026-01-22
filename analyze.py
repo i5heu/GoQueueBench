@@ -245,3 +245,65 @@ for impl in sorted(matrix.keys()):
             cell = "N/A"
         row += f" {cell:>14} |"
     print(row)
+
+# --- Build the Matrix of Local Scores by Concurrency Group ---
+impl_concurrency = defaultdict(lambda: defaultdict(list))
+for bench in benchmarks:
+    impl = bench["implementation"]
+    conc = bench["total_concurrency"]
+    impl_concurrency[impl][conc].append(bench)
+
+local_scores_conc = defaultdict(dict)
+for impl, groups in impl_concurrency.items():
+    for conc, tests in groups.items():
+        n = len(tests)
+        k = max(1, math.ceil(n * 0.05))
+        # Baseline: best throughput tests (sorted descending)
+        tests_sorted_desc = sorted(tests, key=lambda x: x["throughput_msgs_sec"], reverse=True)
+        baseline_group = tests_sorted_desc[:k]
+        baseline_vals = [t["throughput_msgs_sec"] for t in baseline_group]
+        baseline_avg = sum(baseline_vals) / len(baseline_vals)
+        # Worst-case: worst throughput tests (sorted ascending)
+        tests_sorted_asc = sorted(tests, key=lambda x: x["throughput_msgs_sec"])
+        heavy_group = tests_sorted_asc[:k]
+        heavy_vals = [t["throughput_msgs_sec"] for t in heavy_group]
+        heavy_avg = sum(heavy_vals) / len(heavy_vals)
+        # For concurrency groups we use a homogeneity factor of 1 (since all tests share the same concurrency)
+        local_score = math.sqrt(baseline_avg * heavy_avg)
+        local_scores_conc[impl][conc] = local_score
+
+# Determine all Concurrency groups.
+concurrency_groups = set()
+for impl, groups in local_scores_conc.items():
+    concurrency_groups.update(groups.keys())
+concurrency_groups = sorted(concurrency_groups)
+
+# For each Concurrency group, determine the best (highest) local score.
+best_scores_conc = {}
+for conc in concurrency_groups:
+    best = 0
+    for impl in local_scores_conc:
+        if conc in local_scores_conc[impl]:
+            best = max(best, local_scores_conc[impl][conc])
+    best_scores_conc[conc] = best
+
+print("\n## Local Scores by Concurrency Group")
+# Build header using fixed widths.
+header = "| {impl:<27} | ".format(impl="Implementation")
+for conc in concurrency_groups:
+    header += f"Score {conc}Conc".rjust(16) + " | "
+print(header)
+
+separator = "|" + "-"*29 + "|" + "|".join(["-"*18 for _ in concurrency_groups]) + "|"
+print(separator)
+
+for impl in sorted(local_scores_conc.keys()):
+    row = f"| {impl:<27} |"
+    for conc in concurrency_groups:
+        if conc in local_scores_conc[impl]:
+            val = local_scores_conc[impl][conc]
+            cell = f"**{val:.0f}**" if val == best_scores_conc[conc] else f"{val:.0f}"
+        else:
+            cell = "N/A"
+        row += f" {cell:>16} |"
+    print(row)

@@ -30,7 +30,9 @@ func RunTimedTest[T any, Q queue.QueueValidationInterface[T]](
 
 	// Create a context that will cancel after testDuration.
 	ctx, cancel := context.WithTimeout(context.Background(), testDuration)
+	ctx2, cancel2 := context.WithTimeout(context.Background(), testDuration+500*time.Millisecond)
 	defer cancel()
+	defer cancel2()
 
 	var totalProduced int64
 	var totalConsumed int64
@@ -44,11 +46,21 @@ func RunTimedTest[T any, Q queue.QueueValidationInterface[T]](
 	// productionDone will be set to 1 when test duration expires.
 	var productionDone int32 = 0
 
+	// abort is used to signal that the test should stop.
+	var abort int32 = 0
+
 	// Launch a goroutine that waits for the test duration to expire and then
 	// signals production is done.
 	go func() {
 		<-ctx.Done()
 		atomic.StoreInt32(&productionDone, 1)
+	}()
+
+	// Launch a goroutine that waits for the test duration to expire and then
+	// signals that the test should stop.
+	go func() {
+		<-ctx2.Done()
+		atomic.StoreInt32(&abort, 1)
 	}()
 
 	// Spawn producers.
@@ -73,20 +85,28 @@ func RunTimedTest[T any, Q queue.QueueValidationInterface[T]](
 				if atomic.LoadInt32(&productionDone) == 1 {
 					// Drain the queue until empty.
 					for {
+						// Check if we should abort.
+						if atomic.LoadInt32(&abort) == 1 {
+							// If we are aborting, break out of the loop.
+							break
+						}
+
 						if _, ok := q.Dequeue(); ok {
 							atomic.AddInt64(&totalConsumed, 1)
 						} else {
 							break
 						}
+
+						runtime.Gosched()
 					}
 					return
 				}
 				// Normal consumption.
 				if _, ok := q.Dequeue(); ok {
 					atomic.AddInt64(&totalConsumed, 1)
-				} else {
-					runtime.Gosched()
 				}
+
+				runtime.Gosched()
 			}
 		}()
 	}
