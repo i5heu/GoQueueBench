@@ -63,7 +63,8 @@ func (s *shard[T]) Enqueue(val T) {
 
 // Dequeue removes and returns a value from the shard.
 func (s *shard[T]) Dequeue() (T, bool) {
-	for {
+	const maxRetries = 32
+	for retry := 0; retry < maxRetries; retry++ {
 		pos := atomic.LoadUint64(&s.dequeuePos)
 		c := &s.buffer[pos&s.mask]
 		seq := atomic.LoadUint64(&c.sequence)
@@ -74,14 +75,22 @@ func (s *shard[T]) Dequeue() (T, bool) {
 				atomic.StoreUint64(&c.sequence, pos+s.capacity)
 				return val, true
 			}
-		} else {
-			if atomic.LoadUint64(&s.enqueuePos)-pos == 0 {
-				var zero T
-				return zero, false
-			}
-			runtime.Gosched()
+			// CAS failed due to contention, retry immediately
+			continue
 		}
+		// Check if shard is truly empty (enqueuePos == dequeuePos)
+		enqPos := atomic.LoadUint64(&s.enqueuePos)
+		if enqPos == pos {
+			var zero T
+			return zero, false
+		}
+		// Cell not ready yet (enqueue claimed slot but hasn't written yet)
+		// Yield and retry
+		runtime.Gosched()
 	}
+	// After max retries, return false to let caller try another shard
+	var zero T
+	return zero, false
 }
 
 // FreeSlots returns an approximate count of free slots in the shard.
@@ -134,22 +143,34 @@ func (q *MultiHeadQueue[T]) Enqueue(val T) {
 	q.shards[idx].Enqueue(val)
 }
 
-// Dequeue scans shards in round-robin order starting from a rotating index.
+// Dequeue scans all shards starting from a rotating index, retrying to find items.
 func (q *MultiHeadQueue[T]) Dequeue() (T, bool) {
-	start := atomic.AddUint64(&q.nextDeqShard, 1) % q.numShards
-	for i := uint64(0); i < q.numShards; i++ {
-		idx := (start + i) % q.numShards
-		if val, ok := q.shards[idx].Dequeue(); ok {
-			return val, true
+	// Try multiple rounds of scanning all shards
+	const maxRounds = 16
+	for round := 0; round < maxRounds; round++ {
+		start := atomic.AddUint64(&q.nextDeqShard, 1) % q.numShards
+		// Scan all shards in this round
+		for i := uint64(0); i < q.numShards; i++ {
+			idx := (start + i) % q.numShards
+			if val, ok := q.shards[idx].Dequeue(); ok {
+				return val, true
+			}
 		}
+		// Check if all shards are truly empty before giving up
+		totalUsed := uint64(0)
+		for _, s := range q.shards {
+			totalUsed += s.UsedSlots()
+		}
+		if totalUsed == 0 {
+			var zero T
+			return zero, false
+		}
+		// Items exist but aren't ready yet, yield and try again
+		runtime.Gosched()
 	}
-	// Check overall occupancy.
-	if q.UsedSlots() == 0 {
-		var zero T
-		return zero, false
-	}
-	runtime.Gosched()
-	return q.Dequeue()
+	// After max rounds, return false to avoid infinite spinning
+	var zero T
+	return zero, false
 }
 
 // FreeSlots returns the total free slots across all shards.

@@ -79,22 +79,31 @@ func (q *FastMPMCQueue[T]) Enqueue(val T) {
 }
 
 // Dequeue removes and returns a value from the queue.
-// If the queue is empty, it returns the zero value and false.
+// It retries if items are available but CAS fails due to contention.
 func (q *FastMPMCQueue[T]) Dequeue() (T, bool) {
-	// Attempt a single try; the caller can retry if necessary.
-	pos := atomic.LoadUint64(&q.dequeuePos)
-	cell := &q.buffer[pos&q.mask]
-	seq := atomic.LoadUint64(&cell.sequence)
-	// Check if the cell contains a value: sequence should equal pos+1.
-	if int64(seq)-int64(pos+1) == 0 {
-		// Claim the slot.
-		if atomic.CompareAndSwapUint64(&q.dequeuePos, pos, pos+1) {
-			val := cell.value
-			// Mark the cell as free by setting its sequence to pos+capacity.
-			atomic.StoreUint64(&cell.sequence, pos+q.capacity)
-			return val, true
+	const maxRetries = 16
+	for retry := 0; retry < maxRetries; retry++ {
+		pos := atomic.LoadUint64(&q.dequeuePos)
+		cell := &q.buffer[pos&q.mask]
+		seq := atomic.LoadUint64(&cell.sequence)
+		// Check if the cell contains a value: sequence should equal pos+1.
+		if int64(seq)-int64(pos+1) == 0 {
+			// Claim the slot.
+			if atomic.CompareAndSwapUint64(&q.dequeuePos, pos, pos+1) {
+				val := cell.value
+				// Mark the cell as free by setting its sequence to pos+capacity.
+				atomic.StoreUint64(&cell.sequence, pos+q.capacity)
+				return val, true
+			}
+			// CAS failed due to contention, retry immediately
+			continue
 		}
-	} else {
+		// Check if queue is empty
+		if atomic.LoadUint64(&q.enqueuePos) == pos {
+			var zero T
+			return zero, false
+		}
+		// Cell not ready yet, yield and retry
 		runtime.Gosched()
 	}
 	var zero T
