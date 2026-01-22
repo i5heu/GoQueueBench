@@ -18,6 +18,7 @@ import (
 	"github.com/i5heu/GoQueueBench/pkg/lightningqueue"
 	"github.com/i5heu/GoQueueBench/pkg/optmpmc"
 	"github.com/i5heu/GoQueueBench/pkg/optmpmc_sharded"
+	"github.com/i5heu/GoQueueBench/pkg/turboqueue"
 	"github.com/i5heu/GoQueueBench/pkg/vortexqueue"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
@@ -501,6 +502,21 @@ func getImplementations() []Implementation[*int, interface {
 				UsedSlots() uint64
 			} {
 				return lightningqueue.New[*int](capacity)
+			},
+		},
+		{
+			name:        "TurboQueue",
+			pkgName:     "turboqueue",
+			description: "Ultra-fast MPMC queue with ticket-based reservation, adaptive spinning, and aggressive cache-line isolation.",
+			authors:     []string{"Claude (Anthropic)"},
+			features:    []string{"MPMC", "FIFO", "Cache-Optimized", "Ticket-Based", "Adaptive-Spin"},
+			newQueue: func(capacity uint64) interface {
+				Enqueue(*int)
+				Dequeue() (*int, bool)
+				FreeSlots() uint64
+				UsedSlots() uint64
+			} {
+				return turboqueue.New[*int](capacity)
 			},
 		},
 	}
