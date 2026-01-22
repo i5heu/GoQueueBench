@@ -472,7 +472,8 @@ func main() {
 	}
 
 	// ===== Output Markdown Table =====
-	fmt.Println("\nMarkdown Table:\n")
+	fmt.Println("\nMarkdown Table:")
+	fmt.Println()
 	fmt.Println("| Cores | Log Scale | Linear scale |")
 	fmt.Println("|-------|-----------|--------------|")
 	for _, cpus := range cpuGroups {
