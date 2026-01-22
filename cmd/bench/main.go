@@ -16,7 +16,6 @@ import (
 	"github.com/i5heu/GoQueueBench/pkg/fastmpmc"
 	"github.com/i5heu/GoQueueBench/pkg/fastmpmc_ticket"
 	"github.com/i5heu/GoQueueBench/pkg/lightningqueue"
-	"github.com/i5heu/GoQueueBench/pkg/multiheadqueue"
 	"github.com/i5heu/GoQueueBench/pkg/optmpmc"
 	"github.com/i5heu/GoQueueBench/pkg/optmpmc_sharded"
 	"github.com/i5heu/GoQueueBench/pkg/vortexqueue"
@@ -472,21 +471,6 @@ func getImplementations() []Implementation[*int, interface {
 				UsedSlots() uint64
 			} {
 				return fastmpmc_ticket.New[*int](capacity)
-			},
-		},
-		{
-			name:        "MultiHeadQueue",
-			pkgName:     "multiheadqueue",
-			description: "A sharded, multi-head FIFO queue that reduces contention by dividing capacity among independent ring buffers.",
-			authors:     []string{"[Mia Heidenstedt](https://heidenstedt.org)", "OpenAI o3-mini-high[*](#why-are-there-llms-listed-as-authors)"},
-			features:    []string{"MPMC", "Multi-Head-FIFO", "Sharded", "Low Latency"},
-			newQueue: func(capacity uint64) interface {
-				Enqueue(*int)
-				Dequeue() (*int, bool)
-				FreeSlots() uint64
-				UsedSlots() uint64
-			} {
-				return multiheadqueue.New[*int](capacity, 0)
 			},
 		},
 		{
