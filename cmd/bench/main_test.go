@@ -21,18 +21,18 @@ func enforcePointer[T any, PT interface{ ~*T }](q queue.QueueValidationInterface
 type progressWatchdog struct {
 	t            *testing.T
 	label        string
-	mu           sync.Mutex
-	lastProgress time.Time
+	lastProgress atomic.Int64
 	done         chan struct{}
 }
 
 func newWatchdog(t *testing.T, label string) *progressWatchdog {
-	return &progressWatchdog{
-		t:            t,
-		label:        label,
-		lastProgress: time.Now(),
-		done:         make(chan struct{}),
+	wd := &progressWatchdog{
+		t:     t,
+		label: label,
+		done:  make(chan struct{}),
 	}
+	wd.lastProgress.Store(time.Now().UnixNano())
+	return wd
 }
 
 func (wd *progressWatchdog) Start() {
@@ -42,9 +42,8 @@ func (wd *progressWatchdog) Start() {
 		for {
 			select {
 			case <-ticker.C:
-				wd.mu.Lock()
-				elapsed := time.Since(wd.lastProgress)
-				wd.mu.Unlock()
+				last := wd.lastProgress.Load()
+				elapsed := time.Since(time.Unix(0, last))
 				if elapsed > 15*time.Second {
 					wd.t.Fatalf("No progress in the last 15 seconds (%s test likely stuck).", wd.label)
 				}
@@ -56,9 +55,7 @@ func (wd *progressWatchdog) Start() {
 }
 
 func (wd *progressWatchdog) Progress() {
-	wd.mu.Lock()
-	wd.lastProgress = time.Now()
-	wd.mu.Unlock()
+	wd.lastProgress.Store(time.Now().UnixNano())
 }
 
 func (wd *progressWatchdog) Stop() {
